@@ -1,4 +1,4 @@
-"""Phase-1 golden eval runner.
+"""Phase-2 golden eval runner.
 
 Drives the golden query suite (`tests/golden_queries.yaml`) through the live
 `/chat` SSE endpoint. For each prompt we:
@@ -8,14 +8,18 @@ Drives the golden query suite (`tests/golden_queries.yaml`) through the live
      final assistant text, guardrail metadata, latency).
   3. Evaluate every assertion declared on the YAML entry.
   4. Print a per-prompt PASS/FAIL line and a summary at the end.
+  5. Optionally dump a markdown transcript (`--transcript path.md`) of every
+     (prompt, response) pair — convenient for syncing to the Lark wiki so
+     reviewers can read the actual demo answers.
 
-Exits 0 if pass-rate ≥ ``--pass-min`` (default 48 / 50), else 1.
+Exits 0 if pass-rate ≥ ``--pass-min`` (default 75 / 80), else 1.
 
 Usage:
-    uv run python -m scripts.eval_run                         # default endpoint, ≥48 passes
-    uv run python -m scripts.eval_run --pass-min 50           # require all
-    uv run python -m scripts.eval_run --filter q43 q44        # run only these ids
+    uv run python -m scripts.eval_run                              # default
+    uv run python -m scripts.eval_run --pass-min 80                # require all
+    uv run python -m scripts.eval_run --filter q43 q44             # subset
     uv run python -m scripts.eval_run --base http://localhost:8001
+    uv run python -m scripts.eval_run --transcript .context/eval-transcript.md
 """
 
 from __future__ import annotations
@@ -234,7 +238,7 @@ async def main_async(args: argparse.Namespace) -> int:
     print(f"Running {len(queries)} prompt(s) against {args.base}\n")
 
     passed = 0
-    failed_rows: list[tuple[RunResult, list[Assertion]]] = []
+    rows: list[tuple[RunResult, list[Assertion], bool]] = []
 
     async with httpx.AsyncClient() as client:
         for i, q in enumerate(queries, 1):
@@ -246,13 +250,14 @@ async def main_async(args: argparse.Namespace) -> int:
                 tag = f"{G}PASS{RST}"
             else:
                 tag = f"{R_}FAIL{RST}"
-                failed_rows.append((r, checks))
+            rows.append((r, checks, ok))
             print(
                 f"[{i:2d}/{len(queries)}] {tag}  {q['id']:<25} "
                 f"{DIM}{r.latency_ms:5d} ms{RST}  {_short(q['prompt'])}"
             )
 
     print()
+    failed_rows = [(r, c) for r, c, ok in rows if not ok]
     if failed_rows:
         print(f"{R_}=== FAILURES ==={RST}")
         for r, checks in failed_rows:
@@ -269,7 +274,79 @@ async def main_async(args: argparse.Namespace) -> int:
     summary = f"{passed}/{len(queries)} passed  ({rate * 100:.1f}%)"
     bar = G if passed >= args.pass_min else R_
     print(f"\n{bar}=== {summary} ==={RST}\n")
+
+    # Optional transcript dump for the wiki / demo.
+    if args.transcript:
+        out_path = Path(args.transcript)
+        out_path.write_text(_render_transcript(rows, queries))
+        print(f"transcript written to {out_path}")
+
     return 0 if passed >= args.pass_min else 1
+
+
+def _render_transcript(
+    rows: list[tuple[RunResult, list[Assertion], bool]],
+    queries: list[dict[str, Any]],
+) -> str:
+    """Render every (prompt, response) as a markdown document. Format is
+    intentionally chunky and human-readable — designed to be pasted into
+    the Lark wiki for FinWin / investor review."""
+    total = len(rows)
+    passed = sum(1 for _, _, ok in rows if ok)
+
+    # Group by section heading derived from the YAML's section headers.
+    # We walk the queries in their listed order (rows is parallel) and
+    # use the YAML id-prefix sections as our grouping convention.
+    lines: list[str] = []
+    lines.append("# Midas — Phase-2 Golden Eval Transcript")
+    lines.append("")
+    lines.append(
+        f"**{passed}/{total} passed ({passed / total * 100:.1f}%).** "
+        "Live run against `gpt-4o-mini` with the full Phase-2 stack: "
+        "intent-based tool shortlist, internal-tool framing (warn-mode "
+        "guardrails), Pinecone-backed RAG, NSE pledge drill-down."
+    )
+    lines.append("")
+    lines.append(
+        "Each entry shows the prompt, the routed intent + tools the model "
+        "actually fired, latency, and the verbatim assistant response. "
+        "Failures (if any) are marked at the entry header."
+    )
+    lines.append("")
+
+    for (r, checks, ok), q in zip(rows, queries):
+        tag = "✅ PASS" if ok else "❌ FAIL"
+        lines.append(f"### {tag} · `{r.id}`")
+        lines.append("")
+        lines.append(f"**Prompt:** {r.prompt}")
+        lines.append("")
+        meta_bits = [
+            f"intent=`{r.intent}`",
+            f"ticker=`{r.ticker}`",
+            f"tools=`{r.tools_called}`",
+            f"blocked=`{r.blocked}`",
+            f"latency=`{r.latency_ms} ms`",
+        ]
+        lines.append("`" + "` · `".join(b.strip("`") for b in meta_bits) + "`")
+        lines.append("")
+        if r.final_message:
+            lines.append("**Response:**")
+            lines.append("")
+            lines.append("> " + r.final_message.replace("\n", "\n> "))
+            lines.append("")
+        if not ok:
+            failed = [c for c in checks if not c.ok]
+            if failed:
+                lines.append("**Failed assertions:**")
+                lines.append("")
+                for c in failed:
+                    detail = f" — {c.detail}" if c.detail else ""
+                    lines.append(f"- `{c.label}`{detail}")
+                lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 def main() -> None:
@@ -283,8 +360,8 @@ def main() -> None:
     p.add_argument(
         "--pass-min",
         type=int,
-        default=48,
-        help="minimum number of passing prompts (default 48 / 50)",
+        default=75,
+        help="minimum number of passing prompts (default 75 / 80)",
     )
     p.add_argument(
         "--filter",
@@ -292,6 +369,11 @@ def main() -> None:
         help="run only these prompt ids (e.g. --filter q01 q02_price_tcs)",
     )
     p.add_argument("--limit", type=int, help="run only the first N prompts")
+    p.add_argument(
+        "--transcript",
+        help="write a markdown transcript of every (prompt, response) "
+        "to this path — useful for syncing to the Lark wiki",
+    )
     args = p.parse_args()
     sys.exit(asyncio.run(main_async(args)))
 

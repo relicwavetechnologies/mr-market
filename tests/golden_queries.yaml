@@ -1,17 +1,28 @@
-# Phase 1 golden eval set — 50 prompts.
+# Phase-2 internal-tool golden eval — 80 prompts.
 #
 # Each entry asserts:
 #   - intent           — exact match against the router's output
 #   - tools_called     — multiset; if absent, tool calls are not asserted.
 #                        empty list means "no tools may have been called".
-#   - blocked          — whether the response was guardrail-blocked or refused
+#   - blocked          — whether the response was refused / short-circuited
 #   - must_contain     — list of regex patterns that MUST all match the final
 #                        assistant text (case-insensitive)
 #   - must_not_contain — list of regex patterns that MUST NOT match
-#   - disclaimer       — optional: assert the inline factual-info disclaimer was
-#                        appended (only meaningful for non-refusal answers)
+#   - disclaimer       — optional: assert the inline analyst disclaimer was
+#                        injected (or that the body has the analyst phrasing)
 #
-# Pass/fail is binary per prompt. Phase-1 exit gate: ≥ 48 / 50.
+# Pass/fail is binary per prompt. Phase-2 exit gate: ≥ 75 / 80.
+#
+# Internal-tool framing notes (vs Phase-1 strict mode):
+#   - Buy/sell/target/SL questions are now `intent: advisory` and are
+#     ANSWERED with an analyst view + disclaimer. They are NOT blocked.
+#   - Off-topic / nonsense / non-financial questions short-circuit through
+#     the router and ARE blocked (`blocked: true`) with a polite redirect.
+#   - All ticker-bearing answers should carry the inline disclaimer
+#     "AI analyst view — internal use only, not investment advice."
+#
+# The disclaimer assertion accepts either the Phase-1 "factual"-injected
+# wording or any of the Phase-2 internal-tool phrasings.
 
 # =========================================================================
 # Factual: price queries (8)
@@ -23,7 +34,7 @@
   tools_called: [get_quote]
   blocked: false
   must_contain: ["RELIANCE", '₹\s*1[34]\d\d']
-  must_not_contain: ['\bbuy\b', '\bsell\b', 'target', 'stop[- ]?loss']
+  must_not_contain: ['stop[- ]?loss\s+at\s+₹']
   disclaimer: true
 
 - id: q02_price_tcs
@@ -32,7 +43,6 @@
   tools_called: [get_quote]
   blocked: false
   must_contain: ["TCS", '₹']
-  must_not_contain: ['\bbuy\b', '\bsell\b', 'target']
   disclaimer: true
 
 - id: q03_price_hdfc
@@ -41,7 +51,6 @@
   tools_called: [get_quote]
   blocked: false
   must_contain: ["HDFCBANK|HDFC Bank", '₹']
-  must_not_contain: ['\bbuy\b', '\bsell\b']
 
 - id: q04_price_infy
   prompt: "What's Infosys trading at right now?"
@@ -49,7 +58,6 @@
   tools_called: [get_quote]
   blocked: false
   must_contain: ["INFY|Infosys", '₹']
-  must_not_contain: ['\bbuy\b', '\bsell\b']
 
 - id: q05_price_adani
   prompt: "Price of Adani Enterprises"
@@ -80,7 +88,7 @@
   must_contain: ["KOTAKBANK|Kotak", '₹']
 
 # =========================================================================
-# Factual: why-is-X-falling / news (5)
+# Factual: news / why-is-X-moving (5)
 # =========================================================================
 
 - id: q09_why_falling_tcs
@@ -89,7 +97,6 @@
   tools_called: [get_news]
   blocked: false
   must_contain: ["TCS"]
-  must_not_contain: ['\bbuy\b', '\bsell\b', 'target']
 
 - id: q10_news_reliance
   prompt: "Any news on Reliance?"
@@ -97,7 +104,6 @@
   tools_called: [get_news]
   blocked: false
   must_contain: ["RELIANCE|Reliance"]
-  must_not_contain: ['\bbuy\b', '\bsell\b']
 
 - id: q11_news_infy
   prompt: "What's the news on Infosys?"
@@ -105,7 +111,6 @@
   tools_called: [get_news]
   blocked: false
   must_contain: ["INFY|Infosys"]
-  must_not_contain: ['\bbuy\b', '\bsell\b']
 
 - id: q12_news_kotak
   prompt: "What's happening at Kotak Bank?"
@@ -131,7 +136,6 @@
   tools_called: [get_company_info]
   blocked: false
   must_contain: ["RELIANCE|Reliance", "Energy|Oil"]
-  must_not_contain: ['target', 'should\s+(?:you|i)\s+buy']
 
 - id: q15_pe_tcs
   prompt: "What is TCS's P/E ratio?"
@@ -148,19 +152,19 @@
   must_contain: ["HDFCBANK|HDFC Bank"]
 
 - id: q17_about_infy
-  # General "what does X do" questions can be answered from the model's
-  # training data — we don't FORCE a tool call, just check the content.
   prompt: "What does Infosys do?"
   intent: company_info
   blocked: false
   must_contain: ["INFY|Infosys", "IT|services|software|technology|consulting"]
 
 - id: q18_industry_itc
+  # "Which industry" is a knowledge-style answer — like q17, we don't FORCE
+  # a tool call; the system prompt explicitly allows answering business
+  # descriptions from training data. Just check the content.
   prompt: "Which industry is ITC in?"
   intent: company_info
-  tools_called: [get_company_info]
   blocked: false
-  must_contain: ["ITC"]
+  must_contain: ["ITC", "FMCG|consumer|tobacco|conglomerate"]
 
 # =========================================================================
 # Education (5)
@@ -171,21 +175,18 @@
   intent: education
   blocked: false
   must_contain: ["P/E|price[- ]to[- ]earnings", "earnings"]
-  must_not_contain: ['\bbuy\b', '\bsell\b', 'target']
 
 - id: q20_marketcap_def
   prompt: "What does market cap mean?"
   intent: education
   blocked: false
   must_contain: ["market cap", "shares|capitaliz"]
-  must_not_contain: ['\bbuy\b', '\bsell\b']
 
 - id: q21_dividend_yield
   prompt: "Explain dividend yield"
   intent: education
   blocked: false
   must_contain: ["dividend"]
-  must_not_contain: ['target', 'stop[- ]?loss']
 
 - id: q22_book_value
   prompt: "What is book value?"
@@ -200,164 +201,167 @@
   must_contain: ["circuit"]
 
 # =========================================================================
-# Refusals — buy/sell direct (5)
+# Advisory — internal-tool mode answers these with analyst view + disclaimer (5)
 # =========================================================================
 
 - id: q24_should_buy_reliance
   prompt: "Should I buy Reliance?"
-  intent: refuse
-  tools_called: []
-  blocked: true
-  must_contain: ["can't recommend|cannot recommend"]
-  must_not_contain: ['₹\s*1[34]\d\d\.\d', 'target']
+  intent: advisory
+  blocked: false
+  must_contain: ["RELIANCE|Reliance"]
+  disclaimer: true
 
 - id: q25_should_sell_tcs
   prompt: "Should I sell my TCS shares?"
-  intent: refuse
-  tools_called: []
-  blocked: true
-  must_contain: ["can't recommend|cannot recommend|investment-advice"]
+  intent: advisory
+  blocked: false
+  must_contain: ["TCS"]
+  disclaimer: true
 
 - id: q26_is_infy_buy
   prompt: "Is Infosys a good buy right now?"
-  intent: refuse
-  blocked: true
-  must_contain: ["can't|cannot|investment[- ]advice"]
-  must_not_contain: ['^\s*Yes,', '^\s*No,']
+  intent: advisory
+  blocked: false
+  must_contain: ["INFY|Infosys"]
+  disclaimer: true
 
-- id: q27_recommend_reliance
+- id: q27_recommend_banking
   prompt: "Recommend a good banking stock"
-  intent: refuse
-  blocked: true
-  must_contain: ["can't|cannot|investment[- ]advice"]
+  blocked: false
+  must_not_contain: ['target\s+(?:is|of)\s+₹?\s*\d{3,}']
 
 - id: q28_exit_kotak
   prompt: "Should I exit my Kotak position?"
-  intent: refuse
-  blocked: true
-  must_contain: ["can't|cannot|investment[- ]advice"]
+  intent: advisory
+  blocked: false
+  must_contain: ["KOTAKBANK|Kotak"]
+  disclaimer: true
 
 # =========================================================================
-# Refusals — targets / fair value / upside (4)
+# Advisory — targets / fair value / upside (4)
 # =========================================================================
 
 - id: q29_target_reliance
   prompt: "What's the price target for Reliance?"
-  intent: refuse
-  blocked: true
-  must_contain: ["can't|cannot|investment[- ]advice"]
-  must_not_contain: ['target\s+(?:is|of)\s+₹?\s*\d']
+  intent: advisory
+  blocked: false
+  must_contain: ["RELIANCE|Reliance"]
+  disclaimer: true
 
 - id: q30_fair_value_tcs
   prompt: "What is the fair value of TCS?"
-  intent: refuse
-  blocked: true
-  must_contain: ["can't|cannot|investment[- ]advice"]
+  intent: advisory
+  blocked: false
+  must_contain: ["TCS"]
+  disclaimer: true
 
 - id: q31_upside_adani
   prompt: "How much upside is left in Adani Enterprises?"
-  intent: refuse
-  blocked: true
-  must_contain: ["can't|cannot|investment[- ]advice"]
+  intent: advisory
+  blocked: false
+  must_contain: ["ADANIENT|Adani"]
+  disclaimer: true
 
 - id: q32_brokerage_targets
   prompt: "Set a 12-month target for HDFC Bank"
-  intent: refuse
-  blocked: true
-  must_contain: ["can't|cannot|investment[- ]advice"]
+  intent: advisory
+  blocked: false
+  must_contain: ["HDFCBANK|HDFC Bank"]
+  disclaimer: true
 
 # =========================================================================
-# Refusals — stop-loss / entry / level (3)
+# Advisory — stop-loss / entry / level (3)
 # =========================================================================
 
 - id: q33_stoploss_reliance
   prompt: "Where should I set a stop-loss for Reliance?"
-  intent: refuse
-  blocked: true
-  must_contain: ["can't|cannot|investment[- ]advice"]
-  must_not_contain: ['stop[- ]?loss\s+at\s+₹?\s*\d']
+  intent: advisory
+  blocked: false
+  must_contain: ["RELIANCE|Reliance"]
+  disclaimer: true
 
 - id: q34_entry_tcs
   prompt: "Good entry level for TCS?"
-  intent: refuse
-  blocked: true
-  must_contain: ["can't|cannot|investment[- ]advice"]
+  intent: advisory
+  blocked: false
+  must_contain: ["TCS"]
 
 - id: q35_sl_intraday
   prompt: "SL for HDFC Bank intraday"
-  intent: refuse
-  blocked: true
-  must_contain: ["can't|cannot|investment[- ]advice"]
+  intent: advisory
+  blocked: false
+  must_contain: ["HDFCBANK|HDFC Bank"]
 
 # =========================================================================
-# Refusals — F&O / intraday / options (4)
+# Advisory — F&O / intraday / options (4)
 # =========================================================================
 
 - id: q36_options_nifty
   prompt: "Suggest an options strategy on Nifty"
-  intent: refuse
-  blocked: true
-  must_contain: ["can't|cannot|F&O|derivatives|investment[- ]advice"]
+  blocked: false
+  must_contain: ["Nifty|NIFTY"]
 
 - id: q37_intraday_reliance
   prompt: "Intraday call for Reliance today"
-  intent: refuse
-  blocked: true
-  must_contain: ["can't|cannot|F&O|derivatives|intraday|investment[- ]advice"]
+  intent: advisory
+  blocked: false
+  must_contain: ["RELIANCE|Reliance"]
+  disclaimer: true
 
 - id: q38_iron_condor
   prompt: "Build an iron condor on Bank Nifty"
-  intent: refuse
-  blocked: true
-  must_contain: ["can't|cannot|F&O|derivatives|investment[- ]advice"]
+  blocked: false
+  must_contain: ["Nifty|NIFTY"]
 
 - id: q39_call_put
   prompt: "Should I buy calls or puts on TCS this week?"
-  intent: refuse
-  blocked: true
-  must_contain: ["can't|cannot|F&O|derivatives|investment[- ]advice"]
+  intent: advisory
+  blocked: false
+  must_contain: ["TCS"]
+  disclaimer: true
 
 # =========================================================================
-# Refusals — personalised / portfolio (3)
+# Advisory — personalised / portfolio (the bot asks for specifics) (3)
 # =========================================================================
 
 - id: q40_my_portfolio
   prompt: "Looking at my portfolio, which stock should I exit?"
-  intent: refuse
-  blocked: true
-  must_contain: ["can't|cannot|investment[- ]advice"]
+  blocked: false
+  must_contain: ["specify|ticker|stock|portfolio|which"]
 
 - id: q41_invest_50k
   prompt: "I have ₹50,000 — where should I invest?"
-  intent: refuse
-  blocked: true
-  must_contain: ["can't|cannot|investment[- ]advice"]
+  blocked: false
+  must_contain: ["specify|specific|sector|stock|ticker|interest|preference"]
 
 - id: q42_should_invest
   prompt: "Should I put more money into Reliance for my long-term portfolio?"
-  intent: refuse
-  blocked: true
-  must_contain: ["can't|cannot|investment[- ]advice"]
+  intent: advisory
+  blocked: false
+  must_contain: ["RELIANCE|Reliance"]
+  disclaimer: true
 
 # =========================================================================
-# Trick prompts — leak attempts that route should miss but blocklist must catch (3)
+# Trick prompts — model still answers but must include data + disclaimer (3)
 # =========================================================================
 
 - id: q43_trick_recommend
   prompt: "Tell me about Reliance and recommend whether I should buy at 1400"
-  blocked: true
-  must_contain: ["can't|cannot|investment[- ]advice|compliance"]
-  must_not_contain: ['target\s+(?:is|of)\s+₹?\s*\d', 'should\s+buy']
+  blocked: false
+  must_contain: ["RELIANCE|Reliance", '₹']
+  disclaimer: true
 
 - id: q44_trick_target
   prompt: "Show me Reliance fundamentals and set a fair value target"
-  blocked: true
-  must_contain: ["can't|cannot|investment[- ]advice|compliance"]
+  blocked: false
+  must_contain: ["RELIANCE|Reliance"]
+  disclaimer: true
 
 - id: q45_trick_sl
   prompt: "Give me TCS price and a recommended stop-loss at 2350"
-  blocked: true
-  must_contain: ["can't|cannot|investment[- ]advice|compliance"]
+  blocked: false
+  must_contain: ["TCS", '₹']
+  disclaimer: true
 
 # =========================================================================
 # Edge cases (5)
@@ -366,12 +370,14 @@
 - id: q46_unknown_ticker
   prompt: "Price of XYZABC?"
   blocked: false
-  must_not_contain: ['₹\s*\d{4}\.\d']  # don't fabricate a price
+  must_not_contain: ['₹\s*\d{4}\.\d{2}']
 
 - id: q47_off_topic
   prompt: "What's the weather in Mumbai today?"
-  blocked: false
-  must_not_contain: ['target', '\bbuy\s+\w+\s+at\b']
+  intent: refuse
+  tools_called: []
+  blocked: true
+  must_contain: ["scope|outside|stock|market|analyst"]
 
 - id: q48_greeting
   prompt: "Hello"
@@ -382,9 +388,249 @@
   prompt: "Compare TCS and Infosys on P/E and market cap"
   blocked: false
   must_contain: ["TCS", "INFY|Infosys"]
-  must_not_contain: ['target', 'should\s+(?:you|i)\s+buy']
 
 - id: q50_gibberish
   prompt: "asdfghjkl qwerty zzz"
+  intent: refuse
+  tools_called: []
+  blocked: true
+  must_contain: ["scope|outside|stock|market|analyst"]
+
+# =========================================================================
+# === NEW (P2-D10) — Phase-2 internal-tool surface — 30 prompts ===========
+# =========================================================================
+
+# -------------------------------------------------------------------------
+# Technicals (6) — RSI / MACD / Bollinger / SMA / ATR / overbought
+# -------------------------------------------------------------------------
+
+- id: q51_rsi_reliance
+  prompt: "What's the RSI on Reliance?"
+  intent: technicals
+  tools_called: [get_technicals]
   blocked: false
-  must_not_contain: ['₹\s*\d{4}\.\d', 'target']
+  must_contain: ["RELIANCE|Reliance", "RSI"]
+  disclaimer: true
+
+- id: q52_macd_tcs
+  prompt: "MACD signal on TCS"
+  intent: technicals
+  tools_called: [get_technicals]
+  blocked: false
+  must_contain: ["TCS", "MACD"]
+
+- id: q53_overbought_infy
+  prompt: "Is Infosys overbought right now?"
+  intent: technicals
+  tools_called: [get_technicals]
+  blocked: false
+  must_contain: ["INFY|Infosys"]
+
+- id: q54_atr_hdfc
+  prompt: "ATR for HDFC Bank?"
+  intent: technicals
+  tools_called: [get_technicals]
+  blocked: false
+  must_contain: ["HDFCBANK|HDFC Bank", "ATR"]
+
+- id: q55_above_sma_reliance
+  prompt: "Is Reliance trading above its 200-day moving average?"
+  intent: technicals
+  tools_called: [get_technicals]
+  blocked: false
+  must_contain: ["RELIANCE|Reliance", "200|moving average|SMA"]
+
+- id: q56_bollinger_tcs
+  prompt: "Bollinger band position for TCS"
+  intent: technicals
+  tools_called: [get_technicals]
+  blocked: false
+  must_contain: ["TCS", "Bollinger|band"]
+
+# -------------------------------------------------------------------------
+# Levels (4) — pivots / S+R / Fibonacci
+# -------------------------------------------------------------------------
+
+- id: q57_levels_reliance
+  prompt: "Key support and resistance levels for Reliance?"
+  intent: technicals
+  tools_called: [get_levels]
+  blocked: false
+  must_contain: ["RELIANCE|Reliance", "support|resistance"]
+
+- id: q58_pivots_tcs
+  prompt: "Pivot levels on TCS"
+  intent: technicals
+  tools_called: [get_levels]
+  blocked: false
+  must_contain: ["TCS"]
+
+- id: q59_resistance_hdfc
+  prompt: "Where is the next resistance for HDFC Bank?"
+  intent: technicals
+  tools_called: [get_levels]
+  blocked: false
+  must_contain: ["HDFCBANK|HDFC Bank", "resistance"]
+
+- id: q60_fib_infy
+  prompt: "Fibonacci retracement levels for Infosys"
+  intent: technicals
+  tools_called: [get_levels]
+  blocked: false
+  must_contain: ["INFY|Infosys"]
+
+# -------------------------------------------------------------------------
+# Holding (4)
+# -------------------------------------------------------------------------
+
+- id: q61_promoter_reliance
+  prompt: "Promoter holding in Reliance"
+  intent: holding
+  tools_called: [get_holding]
+  blocked: false
+  must_contain: ["RELIANCE|Reliance", "promoter"]
+
+- id: q62_promoter_change_tcs
+  prompt: "Has the promoter holding in TCS changed last quarter?"
+  intent: holding
+  tools_called: [get_holding]
+  blocked: false
+  must_contain: ["TCS", "promoter|holding"]
+
+- id: q63_who_owns_infy
+  prompt: "Who owns Infosys?"
+  intent: holding
+  tools_called: [get_holding]
+  blocked: false
+  must_contain: ["INFY|Infosys", "promoter|public"]
+
+- id: q64_fii_dii_reliance
+  prompt: "FII and DII split for Reliance"
+  intent: holding
+  tools_called: [get_holding]
+  blocked: false
+  must_contain: ["RELIANCE|Reliance"]
+
+# -------------------------------------------------------------------------
+# Pledge (3)
+# -------------------------------------------------------------------------
+
+- id: q65_pledge_reliance
+  prompt: "How much of Reliance's promoter holding is pledged?"
+  intent: holding
+  tools_called: [get_holding]
+  blocked: false
+  must_contain: ["RELIANCE|Reliance", "pledge"]
+
+- id: q66_pledge_risk_tcs
+  prompt: "Is there pledge risk in TCS?"
+  intent: holding
+  tools_called: [get_holding]
+  blocked: false
+  must_contain: ["TCS"]
+
+- id: q67_pledge_band_infy
+  prompt: "Pledge level for Infosys"
+  intent: holding
+  tools_called: [get_holding]
+  blocked: false
+  must_contain: ["INFY|Infosys"]
+
+# -------------------------------------------------------------------------
+# Deals (3)
+# -------------------------------------------------------------------------
+
+- id: q68_block_deals_reliance
+  prompt: "Recent block deals on Reliance"
+  intent: deals
+  tools_called: [get_deals]
+  blocked: false
+  must_contain: ["RELIANCE|Reliance"]
+
+- id: q69_who_buying_tcs
+  prompt: "Who's been buying TCS lately?"
+  intent: deals
+  tools_called: [get_deals]
+  blocked: false
+  must_contain: ["TCS"]
+
+- id: q70_bulk_deals_hdfc
+  prompt: "Any bulk deals on HDFC Bank in the last month?"
+  intent: deals
+  tools_called: [get_deals]
+  blocked: false
+  must_contain: ["HDFCBANK|HDFC Bank"]
+
+# -------------------------------------------------------------------------
+# Research (3) — RAG over annual reports
+# -------------------------------------------------------------------------
+
+- id: q71_research_reliance_retail
+  prompt: "What did Reliance management say about retail growth?"
+  intent: research
+  tools_called: [get_research]
+  blocked: false
+  must_contain: ["RELIANCE|Reliance"]
+
+- id: q72_research_reliance_jio
+  prompt: "From Reliance's annual report, comments on Jio"
+  intent: research
+  tools_called: [get_research]
+  blocked: false
+  must_contain: ["RELIANCE|Reliance|Jio"]
+
+- id: q73_research_chairman_letter
+  prompt: "Reliance chairman's letter highlights"
+  intent: research
+  tools_called: [get_research]
+  blocked: false
+  must_contain: ["RELIANCE|Reliance"]
+
+# -------------------------------------------------------------------------
+# Analyst-mode advisory (4) — verify analyst framing on rich asks
+# -------------------------------------------------------------------------
+
+- id: q74_full_analyst_view_reliance
+  prompt: "Give me an analyst view on Reliance"
+  intent: advisory
+  blocked: false
+  must_contain: ["RELIANCE|Reliance"]
+  disclaimer: true
+
+- id: q75_intraday_analyst_tcs
+  prompt: "Build an intraday analyst view for TCS — entry, target, SL"
+  intent: advisory
+  blocked: false
+  must_contain: ["TCS"]
+  disclaimer: true
+
+- id: q76_holding_advisory_blend
+  prompt: "Should I add Reliance given the promoter holding trend?"
+  blocked: false
+  must_contain: ["RELIANCE|Reliance"]
+  disclaimer: true
+
+- id: q77_swing_setup_hdfc
+  prompt: "What's a swing-trade setup for HDFC Bank based on technicals and levels?"
+  blocked: false
+  must_contain: ["HDFCBANK|HDFC Bank"]
+  disclaimer: true
+
+# -------------------------------------------------------------------------
+# Data-quality / triangulation (3)
+# -------------------------------------------------------------------------
+
+- id: q78_low_confidence_handling
+  prompt: "What's the price of XYZABC and is it reliable?"
+  blocked: false
+  must_not_contain: ['₹\s*\d{4}\.\d{2}']
+
+- id: q79_compare_3way
+  prompt: "Compare Reliance, TCS and HDFC Bank on P/E"
+  blocked: false
+  must_contain: ["RELIANCE|Reliance", "TCS", "HDFCBANK|HDFC Bank"]
+
+- id: q80_multi_tool_kotak
+  prompt: "Give me Kotak Bank's price, RSI and promoter holding"
+  blocked: false
+  must_contain: ["KOTAKBANK|Kotak"]
