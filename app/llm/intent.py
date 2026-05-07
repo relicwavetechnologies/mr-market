@@ -1,10 +1,12 @@
 """Intent classification + ticker extraction.
 
-A small, cheap GPT call that runs *before* the main orchestrator. It buys us:
-  1. A coarse routing label so we can short-circuit pure refusals (no need to
-     burn the workhorse on "Should I buy Reliance?").
-  2. Cheap ticker extraction — many user queries name a single ticker; pulling
-     it out here lets the orchestrator pre-warm the relevant tool.
+A small, cheap GPT call before the main orchestrator. Buys us:
+  1. A coarse routing label so the workhorse can pre-plan its tools.
+  2. Cheap ticker extraction.
+
+**Internal-tool mode** (Phase-2 default): the bot answers buy/sell/target/SL
+questions with analyst views, so those stop being `refuse`. `refuse` is now
+reserved for genuine off-topic / nonsense / non-financial queries.
 
 Returns a small structured dict; never raises (degrades to {intent: "other"}).
 """
@@ -25,60 +27,84 @@ Intent = Literal[
     "quote",          # "price of X"
     "news",           # "what's the news on X" / "why is X falling"
     "company_info",   # "tell me about X" / "what is X's P/E"
+    "technicals",     # "RSI on X" / "MACD signal" / "key levels"
+    "holding",        # "promoter holding" / "who owns X" / "FII flow"
+    "deals",          # "block deals on X" / "institutional flows"
+    "advisory",       # "should I buy X" / "target for X" / "SL for X"
     "education",      # "what is P/E ratio"
-    "refuse",         # "should I buy X" / "target for X"
+    "refuse",         # off-topic / nonsense / non-financial only
     "other",
 ]
 
 
 _INTENT_SYSTEM = """Classify a user message about Indian stocks. Output STRICT JSON:
-  {"intent": "quote"|"news"|"company_info"|"education"|"refuse"|"other", "ticker": "<UPPERCASE_NSE_SYMBOL>"|null}
+  {"intent": "<one-of-below>", "ticker": "<UPPERCASE_NSE_SYMBOL>"|null}
 
-Definitions and examples:
+Allowed intents and examples:
 
-- "quote"        → user wants the current/last price, change %, day range.
-                   "price of reliance"           → quote, RELIANCE
-                   "what is HDFCBANK trading at"  → quote, HDFCBANK
-                   "TCS price"                    → quote, TCS
+- "quote"        → live or last-traded price.
+                   "price of reliance"          → quote, RELIANCE
+                   "TCS price"                   → quote, TCS
 
-- "news"         → user wants recent headlines, or asks WHY a stock moved.
-                   "why is tata motors falling"   → news, TATAMOTORS
-                   "news on infy"                 → news, INFY
-                   "any updates on adani"         → news, ADANIENT
+- "news"         → recent headlines or "why is X moving today".
+                   "why is tata motors falling"  → news, TATAMOTORS
+                   "news on infy"                → news, INFY
 
-- "company_info" → user wants fundamentals: sector, industry, P/E, ROE, market cap, 52w range.
-                   "tell me about reliance"       → company_info, RELIANCE
-                   "what does TCS do"             → company_info, TCS
-                   "infy market cap and pe"       → company_info, INFY
+- "company_info" → fundamentals: sector, market cap, P/E, ROE, P/B, 52w range.
+                   "tell me about reliance"      → company_info, RELIANCE
+                   "P/E of TCS"                  → company_info, TCS
 
-- "education"    → user wants a generic concept explained (no stock-specific advice).
-                   "what is P/E ratio"            → education, null
-                   "explain stop loss"            → education, null
+- "technicals"   → RSI, MACD, Bollinger, SMA, EMA, ATR, support/resistance,
+                   pivots, Fibonacci.
+                   "RSI on Reliance"             → technicals, RELIANCE
+                   "key levels for HDFC Bank"    → technicals, HDFCBANK
+                   "is INFY oversold"            → technicals, INFY
 
-- "refuse"       → user is asking for ADVICE / a RECOMMENDATION / a TARGET / a TRADE.
-                   ONLY use refuse for these patterns:
-                     "should I buy X" / "is X a good buy" / "should I sell X"
-                     "what's the target for X"
-                     "where to set stop loss for X"
-                     "X intraday strategy" / "X for swing trade"
-                     "options strategy on X" / "puts/calls on X"
-                   "should i buy reliance"        → refuse, RELIANCE
-                   "target for adani"             → refuse, ADANIENT
-                   "options on bank nifty"        → refuse, null
+- "holding"      → quarterly shareholding, promoter / FII / DII split, pledge.
+                   "promoter holding for adani"  → holding, ADANIENT
+                   "who owns infosys"            → holding, INFY
 
-- "other"        → none of the above (greeting, off-topic, unclear).
+- "deals"        → bulk / block deals, institutional flows, named clients.
+                   "block deals on reliance"     → deals, RELIANCE
+                   "who's buying ICICI bank"     → deals, ICICIBANK
 
-CRITICAL: A pure factual question about a price, news, or fundamentals is NEVER "refuse".
-Refuse only when the user is asking what to DO or for a target/SL.
+- "advisory"     → buy / sell / hold opinion, price target, stop-loss, entry
+                   level, F&O strategy, intraday view. **The bot answers these
+                   with an analyst view** in internal-tool mode.
+                   "should I buy reliance"       → advisory, RELIANCE
+                   "target for adani"            → advisory, ADANIENT
+                   "SL for HDFC bank"            → advisory, HDFCBANK
+                   "intraday call for tcs"       → advisory, TCS
+
+- "education"    → generic concept (no specific ticker).
+                   "what is P/E ratio"           → education, null
+                   "explain stop loss"           → education, null
+
+- "refuse"       → genuinely off-topic / nonsense / non-financial.
+                   "what's the weather in mumbai" → refuse, null
+                   "asdfghjkl"                    → refuse, null
+                   "tell me a joke"               → refuse, null
+
+- "other"        → anything that doesn't fit above (greetings, multi-topic).
+
+CRITICAL:
+- Buy/sell/target/SL/intraday/F&O questions are "advisory", NOT "refuse".
+- "refuse" is reserved for off-topic / nonsense only — NEVER for stock advice.
+- A factual question (price / news / fundamentals / technicals / holdings) is
+  always its specific intent, never "advisory" and never "refuse".
 """
 
 
 _FORCE_JSON = {"type": "json_object"}
 
+_VALID_INTENTS = {
+    "quote", "news", "company_info", "technicals", "holding", "deals",
+    "advisory", "education", "refuse", "other",
+}
+
 
 async def classify(client: AsyncOpenAI, user_message: str) -> dict:
-    """Best-effort classification. Returns:
-       {"intent": Intent, "ticker": str|None}.
+    """Best-effort classification. Returns {"intent": Intent, "ticker": str|None}.
     Never raises.
     """
     settings = get_settings()
@@ -97,7 +123,7 @@ async def classify(client: AsyncOpenAI, user_message: str) -> dict:
         content = (resp.choices[0].message.content or "").strip()
         data = json.loads(content)
         intent = str(data.get("intent") or "other").lower()
-        if intent not in {"quote", "news", "company_info", "education", "refuse", "other"}:
+        if intent not in _VALID_INTENTS:
             intent = "other"
         ticker_raw = data.get("ticker")
         ticker = (

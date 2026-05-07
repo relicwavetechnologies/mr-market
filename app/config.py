@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     jwt_access_ttl_min: int = 15
     jwt_refresh_ttl_days: int = 30
 
+    # Guardrail mode — Phase-2 default is "warn" (internal tool: blocklist
+    # hits are logged + UI banner is shown, but the streamed answer is NOT
+    # overridden). Set GUARDRAIL_MODE=strict to revert to Phase-1 behaviour.
+    guardrail_mode: str = "warn"
+
     # Reserved for later swap (Anthropic / Gemini).
     anthropic_api_key: str = ""
     gemini_api_key: str = ""
