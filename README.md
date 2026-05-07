@@ -1,13 +1,13 @@
-# Mr. Market
+# Midas
 
 AI trading assistant for FinWin (Indian retail trading). **Phase 1 — local demo.**
 
-Plans + progress live in **Lark Wiki** (Tech Hub > 01 — Clients > Acme > Mr. Market). See [`AGENTS.md`](./AGENTS.md) for the wiki token table.
+Plans + progress live in **Lark Wiki**. See [`AGENTS.md`](./AGENTS.md) for the wiki token table.
 
 ## Layout
 
 ```
-mr-market/
+midas/
 ├── app/                    Python backend (FastAPI + SQLAlchemy 2.0 async)
 │   ├── main.py             FastAPI app factory + CORS
 │   ├── config.py           pydantic-settings

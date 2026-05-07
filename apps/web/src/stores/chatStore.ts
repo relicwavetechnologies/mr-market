@@ -1,5 +1,8 @@
 import { create } from 'zustand';
+import * as chatsApi from '@/services/chatsApi';
 import type { Conversation, Message } from '@/types';
+
+const LOCAL_ID_PREFIX = 'local-';
 
 interface ChatState {
   conversations: Conversation[];
@@ -8,6 +11,9 @@ interface ChatState {
   isGenerating: boolean;
 
   createConversation: (title?: string) => string;
+  hydrateFromServer: () => Promise<void>;
+  fetchConversation: (id: string) => Promise<void>;
+  replaceConversationId: (oldId: string, newId: string) => void;
   sendMessage: (conversationId: string, message: Message) => void;
   updateMessageContent: (conversationId: string, messageId: string, content: string) => void;
   updateMessageStreaming: (conversationId: string, messageId: string, isStreaming: boolean) => void;
@@ -16,21 +22,27 @@ interface ChatState {
   patchMessage: (conversationId: string, messageId: string, patch: Partial<Message>) => void;
   setActiveConversation: (id: string | null) => void;
   setIsGenerating: (generating: boolean) => void;
-  deleteConversation: (id: string) => void;
+  deleteConversation: (id: string) => Promise<void>;
+  clearAll: () => void;
 }
 
-export const useChatStore = create<ChatState>((set) => ({
+export function isLocalConversationId(id: string | null | undefined): boolean {
+  return Boolean(id?.startsWith(LOCAL_ID_PREFIX));
+}
+
+export const useChatStore = create<ChatState>((set, get) => ({
   conversations: [],
   activeConversationId: null,
   messages: {},
   isGenerating: false,
 
   createConversation: (title?: string) => {
-    const id = crypto.randomUUID();
+    const id = `${LOCAL_ID_PREFIX}${crypto.randomUUID()}`;
     const conversation: Conversation = {
       id,
       title: title ?? 'New Chat',
       lastMessage: '',
+      createdAt: new Date(),
       updatedAt: new Date(),
     };
     set((state) => ({
@@ -41,13 +53,57 @@ export const useChatStore = create<ChatState>((set) => ({
     return id;
   },
 
+  hydrateFromServer: async () => {
+    const conversations = await chatsApi.listChats();
+    set({
+      conversations,
+      messages: {},
+      activeConversationId: null,
+    });
+  },
+
+  fetchConversation: async (id: string) => {
+    if (isLocalConversationId(id)) return;
+    const detail = await chatsApi.getChat(id);
+    set((state) => ({
+      conversations: upsertConversation(state.conversations, detail.conversation),
+      messages: {
+        ...state.messages,
+        [id]: detail.messages,
+      },
+    }));
+  },
+
+  replaceConversationId: (oldId: string, newId: string) => {
+    if (oldId === newId) return;
+    set((state) => {
+      const oldMessages = state.messages[oldId] ?? [];
+      const messages = { ...state.messages };
+      delete messages[oldId];
+      messages[newId] = oldMessages;
+
+      const conversations = state.conversations.map((conversation) =>
+        conversation.id === oldId
+          ? { ...conversation, id: newId, updatedAt: new Date() }
+          : conversation,
+      );
+
+      return {
+        conversations,
+        messages,
+        activeConversationId:
+          state.activeConversationId === oldId ? newId : state.activeConversationId,
+      };
+    });
+  },
+
   sendMessage: (conversationId: string, message: Message) => {
     set((state) => {
       const existing = state.messages[conversationId] ?? [];
       const titleUpdate =
         message.role === 'user' && existing.length === 0
           ? message.content.length > 50
-            ? message.content.slice(0, 50) + '...'
+            ? `${message.content.slice(0, 50)}...`
             : message.content
           : undefined;
 
@@ -64,7 +120,7 @@ export const useChatStore = create<ChatState>((set) => ({
                 updatedAt: new Date(),
                 ...(titleUpdate ? { title: titleUpdate } : {}),
               }
-            : c
+            : c,
         ),
       };
     });
@@ -75,7 +131,7 @@ export const useChatStore = create<ChatState>((set) => ({
       messages: {
         ...state.messages,
         [conversationId]: (state.messages[conversationId] ?? []).map((m) =>
-          m.id === messageId ? { ...m, content } : m
+          m.id === messageId ? { ...m, content } : m,
         ),
       },
     }));
@@ -86,7 +142,7 @@ export const useChatStore = create<ChatState>((set) => ({
       messages: {
         ...state.messages,
         [conversationId]: (state.messages[conversationId] ?? []).map((m) =>
-          m.id === messageId ? { ...m, isStreaming } : m
+          m.id === messageId ? { ...m, isStreaming } : m,
         ),
       },
     }));
@@ -97,7 +153,7 @@ export const useChatStore = create<ChatState>((set) => ({
       messages: {
         ...state.messages,
         [conversationId]: (state.messages[conversationId] ?? []).map((m) =>
-          m.id === messageId ? { ...m, sources } : m
+          m.id === messageId ? { ...m, sources } : m,
         ),
       },
     }));
@@ -108,7 +164,7 @@ export const useChatStore = create<ChatState>((set) => ({
       messages: {
         ...state.messages,
         [conversationId]: (state.messages[conversationId] ?? []).map((m) =>
-          m.id === messageId ? { ...m, completionTime: time } : m
+          m.id === messageId ? { ...m, completionTime: time } : m,
         ),
       },
     }));
@@ -119,7 +175,7 @@ export const useChatStore = create<ChatState>((set) => ({
       messages: {
         ...state.messages,
         [conversationId]: (state.messages[conversationId] ?? []).map((m) =>
-          m.id === messageId ? { ...m, ...patch } : m
+          m.id === messageId ? { ...m, ...patch } : m,
         ),
       },
     }));
@@ -133,16 +189,26 @@ export const useChatStore = create<ChatState>((set) => ({
     set({ isGenerating: generating });
   },
 
-  deleteConversation: (id: string) => {
+  deleteConversation: async (id: string) => {
+    if (!isLocalConversationId(id)) await chatsApi.deleteChat(id);
     set((state) => {
-      const newMessages = { ...state.messages };
-      delete newMessages[id];
+      const messages = { ...state.messages };
+      delete messages[id];
       return {
         conversations: state.conversations.filter((c) => c.id !== id),
-        messages: newMessages,
-        activeConversationId:
-          state.activeConversationId === id ? null : state.activeConversationId,
+        messages,
+        activeConversationId: state.activeConversationId === id ? null : state.activeConversationId,
       };
     });
   },
+
+  clearAll: () => {
+    get().setIsGenerating(false);
+    set({ conversations: [], activeConversationId: null, messages: {}, isGenerating: false });
+  },
 }));
+
+function upsertConversation(conversations: Conversation[], next: Conversation): Conversation[] {
+  const existing = conversations.filter((c) => c.id !== next.id);
+  return [next, ...existing].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+}

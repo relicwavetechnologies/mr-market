@@ -1,10 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowUpRight,
-  Bell,
   Briefcase,
   Clock,
   Compass,
+  LogOut,
   Moon,
   PanelLeft,
   PanelLeftClose,
@@ -42,7 +42,9 @@ export function Sidebar() {
   const conversations = useChatStore((s) => s.conversations);
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+  const fetchConversation = useChatStore((s) => s.fetchConversation);
   const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
   const setShowAuthModal = useAuthStore((s) => s.setShowAuthModal);
   const theme = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggleTheme);
@@ -57,6 +59,7 @@ export function Sidebar() {
   const handleConversationClick = (id: string) => {
     setActiveConversation(id);
     navigate(`/chat/${id}`);
+    void fetchConversation(id).catch(() => undefined);
   };
 
   if (!sidebarOpen) {
@@ -120,6 +123,22 @@ export function Sidebar() {
           >
             {user?.name ? user.name.charAt(0).toUpperCase() : 'G'}
           </button>
+          {user && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={logout}
+                  className="text-muted-foreground hover:text-foreground"
+                  aria-label="Sign out"
+                >
+                  <LogOut className="size-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Sign out</TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </aside>
     );
@@ -136,13 +155,13 @@ export function Sidebar() {
         <button
           onClick={handleNewChat}
           className="flex items-center gap-2 outline-none"
-          aria-label="Mr. Market home"
+          aria-label="Midas home"
         >
           <span className="flex size-6 items-center justify-center rounded-md bg-foreground/10">
             <TrendingUp className="size-3.5 text-foreground" />
           </span>
           <span className="text-[13px] font-medium tracking-tight text-foreground">
-            Mr. Market
+            Midas
           </span>
         </button>
         <Button
@@ -254,11 +273,14 @@ export function Sidebar() {
           <Button
             variant="ghost"
             size="icon-xs"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (user) logout();
+            }}
             className="text-muted-foreground hover:text-foreground"
-            aria-label={user ? 'Notifications' : 'Settings'}
+            aria-label={user ? 'Sign out' : 'Settings'}
           >
-            {user ? <Bell className="size-3.5" /> : <Settings className="size-3.5" />}
+            {user ? <LogOut className="size-3.5" /> : <Settings className="size-3.5" />}
           </Button>
         </div>
       </div>

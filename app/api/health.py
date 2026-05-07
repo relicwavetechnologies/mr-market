@@ -19,4 +19,4 @@ async def healthz(session: AsyncSession = Depends(get_session)) -> dict[str, str
 
 @router.get("/")
 async def root() -> dict[str, str]:
-    return {"app": "mr-market", "phase": "1-local-demo"}
+    return {"app": "midas", "phase": "1-local-demo"}

@@ -267,7 +267,7 @@ async def main_async(args: argparse.Namespace) -> int:
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description="Mr. Market Phase-1 golden eval runner")
+    p = argparse.ArgumentParser(description="Midas Phase-1 golden eval runner")
     p.add_argument("--base", default=DEFAULT_BASE, help="backend base URL")
     p.add_argument(
         "--yaml",

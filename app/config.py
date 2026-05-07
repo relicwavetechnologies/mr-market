@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     openai_model_work: str = "gpt-4o-mini"
     openai_model_router: str = "gpt-4o-mini"
 
+    # Demo auth. Override JWT_SECRET outside local development.
+    jwt_secret: str = "dev-insecure-change-me-32-bytes-minimum"
+    jwt_access_ttl_min: int = 15
+    jwt_refresh_ttl_days: int = 30
+
     # Reserved for later swap (Anthropic / Gemini).
     anthropic_api_key: str = ""
     gemini_api_key: str = ""

@@ -31,7 +31,7 @@ export const useThemeStore = create<ThemeState>()(
       },
     }),
     {
-      name: 'mr-market-theme',
+      name: 'midas-theme',
       onRehydrateStorage: () => (state) => {
         if (state) applyTheme(state.theme);
       },
@@ -42,7 +42,7 @@ export const useThemeStore = create<ThemeState>()(
 // Apply on first import (covers cold start before hydration)
 if (typeof document !== 'undefined') {
   try {
-    const persisted = localStorage.getItem('mr-market-theme');
+    const persisted = localStorage.getItem('midas-theme');
     const theme = persisted
       ? (JSON.parse(persisted)?.state?.theme as Theme | undefined) ?? 'dark'
       : 'dark';

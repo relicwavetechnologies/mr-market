@@ -1,4 +1,4 @@
-# Mr. Market — Local Demo Plan
+# Midas — Local Demo Plan
 
 **Status:** v1 · **Window:** ~7 working days · **Scope:** local demo on Mac, free data only, accuracy ≥99%
 
@@ -147,7 +147,7 @@ Plus an **admin view** (`http://localhost:8501/admin`) that shows the audit log 
 ## 4. Repo layout (slimmer than prod plan)
 
 ```
-mr-market/
+midas/
 ├── pyproject.toml         # uv
 ├── uv.lock
 ├── docker-compose.yml     # postgres + redis only

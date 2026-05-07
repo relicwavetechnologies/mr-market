@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useChatStore } from '@/stores/chatStore';
+import { isLocalConversationId, useChatStore } from '@/stores/chatStore';
 import { streamChat } from '@/services/chatApi';
 import type { ChatStreamEvent, Message, Source, ToolEvent } from '@/types';
 
@@ -12,6 +12,7 @@ export function useChat() {
   const createConversation = useChatStore((s) => s.createConversation);
   const sendMessageToStore = useChatStore((s) => s.sendMessage);
   const patchMessage = useChatStore((s) => s.patchMessage);
+  const replaceConversationId = useChatStore((s) => s.replaceConversationId);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const setIsGenerating = useChatStore((s) => s.setIsGenerating);
 
@@ -80,6 +81,16 @@ export function useChat() {
         switch (ev.type) {
           case 'auth':
             return;
+          case 'conversation': {
+            const serverId = ev.conversation_id;
+            if (serverId && convId !== serverId) {
+              replaceConversationId(convId!, serverId);
+              convId = serverId;
+              setActiveConversation(serverId);
+              navigate(`/chat/${serverId}`, { replace: true });
+            }
+            return;
+          }
           case 'intent':
             intent = ev.intent;
             ticker = ev.ticker;
@@ -116,7 +127,7 @@ export function useChat() {
                   seenSourceKeys.add(key);
                   sources.push({
                     title: `${tickerName} — ${conf} confidence (${ok.length} sources)`,
-                    domain: 'mr-market',
+                    domain: 'midas',
                   });
                 }
               } else if (ev.name === 'get_news') {
@@ -126,7 +137,7 @@ export function useChat() {
                   seenSourceKeys.add(key);
                   sources.push({
                     title: `${tickerName} — ${cnt} headline${cnt === 1 ? '' : 's'} (24h)`,
-                    domain: 'mr-market',
+                    domain: 'midas',
                   });
                 }
               } else if (ev.name === 'get_company_info') {
@@ -135,7 +146,7 @@ export function useChat() {
                   seenSourceKeys.add(key);
                   sources.push({
                     title: `${tickerName} — fundamentals (yfinance + Screener)`,
-                    domain: 'mr-market',
+                    domain: 'midas',
                   });
                 }
               }
@@ -181,6 +192,7 @@ export function useChat() {
         await streamChat(trimmed, {
           onEvent: handleEvent,
           signal: controller.signal,
+          conversationId: isLocalConversationId(convId) ? null : convId,
         });
         // Stream ended without a `done`/`error` event — finalize with whatever we have.
         if (!finalized) {
@@ -208,7 +220,9 @@ export function useChat() {
       createConversation,
       sendMessageToStore,
       patchMessage,
+      replaceConversationId,
       setIsGenerating,
+      setActiveConversation,
       navigate,
     ],
   );

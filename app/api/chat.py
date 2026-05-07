@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import json
 import time
+import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -21,8 +23,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
+from app.api.deps import get_current_user_optional
 from app.config import get_settings
+from app.db.models.conversation import Conversation
 from app.db.models.chat_audit import ChatAudit
+from app.db.models.message import Message
+from app.db.models.user import User
 from app.db.session import get_session
 from app.llm.orchestrator import run_chat
 
@@ -32,6 +38,7 @@ router = APIRouter(tags=["chat"])
 class ChatPayload(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
     user_id: str | None = None
+    conversation_id: uuid.UUID | None = None
 
 
 @router.post("/chat")
@@ -39,21 +46,32 @@ async def chat(
     payload: ChatPayload,
     request: Request,
     session: AsyncSession = Depends(get_session),
+    current_user: User | None = Depends(get_current_user_optional),
 ) -> EventSourceResponse:
     redis = getattr(request.app.state, "redis", None)
     if redis is None:
         raise HTTPException(status_code=503, detail="redis unavailable")
 
     settings = get_settings()
+    conversation: Conversation | None = None
+    if current_user is not None:
+        conversation = await _prepare_conversation(payload, current_user=current_user, session=session)
 
     async def event_stream():
         started = time.perf_counter()
         intent_meta: dict[str, Any] = {}
         tool_results: dict[str, Any] = {}
+        tool_events: list[dict[str, Any]] = []
         final_message = ""
         blocked = False
         error_message: str | None = None
         guardrail_meta: dict[str, Any] | None = None
+
+        if conversation is not None:
+            yield {
+                "event": "conversation",
+                "data": json.dumps({"type": "conversation", "conversation_id": str(conversation.id)}),
+            }
 
         try:
             async for ev in run_chat(payload.message, session=session, redis=redis):
@@ -66,8 +84,35 @@ async def chat(
                         "intent": ev.get("intent"),
                         "ticker": ev.get("ticker"),
                     }
+                elif t == "tool_call":
+                    tool_events.append(
+                        {
+                            "name": ev.get("name"),
+                            "status": "running",
+                            "args": ev.get("args") or {},
+                        }
+                    )
                 elif t == "tool_result":
                     tool_results.setdefault(ev["name"], []).append(ev.get("summary"))
+                    for item in reversed(tool_events):
+                        if item.get("name") == ev.get("name") and item.get("status") == "running":
+                            item.update(
+                                {
+                                    "status": "done",
+                                    "ms": ev.get("ms"),
+                                    "summary": ev.get("summary"),
+                                }
+                            )
+                            break
+                    else:
+                        tool_events.append(
+                            {
+                                "name": ev.get("name"),
+                                "status": "done",
+                                "ms": ev.get("ms"),
+                                "summary": ev.get("summary"),
+                            }
+                        )
                 elif t == "guardrail":
                     guardrail_meta = {k: v for k, v in ev.items() if k != "type"}
                 elif t == "done":
@@ -97,9 +142,24 @@ async def chat(
                 }
                 if gr_min:
                     flagged_payload["guardrail"] = gr_min
+            if conversation is not None:
+                conversation.updated_at = datetime.now(UTC)
+                session.add(
+                    Message(
+                        conversation_id=conversation.id,
+                        role="assistant",
+                        content=final_message or error_message or "",
+                        sources=_sources_from_tool_results(tool_results),
+                        tool_events=tool_events or None,
+                        intent=intent_meta.get("intent"),
+                        ticker=intent_meta.get("ticker"),
+                        blocked=blocked,
+                        completion_time_ms=duration_ms,
+                    )
+                )
             session.add(
                 ChatAudit(
-                    user_id=payload.user_id,
+                    user_id=str(current_user.id) if current_user is not None else None,
                     query=payload.message,
                     intent=intent_meta.get("intent"),
                     retrieved={
@@ -118,3 +178,78 @@ async def chat(
             await session.rollback()
 
     return EventSourceResponse(event_stream())
+
+
+async def _prepare_conversation(
+    payload: ChatPayload,
+    *,
+    current_user: User,
+    session: AsyncSession,
+) -> Conversation:
+    if payload.conversation_id is not None:
+        conversation = await session.get(Conversation, payload.conversation_id)
+        if conversation is None:
+            raise HTTPException(status_code=404, detail="conversation not found")
+        if conversation.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="conversation belongs to another user")
+    else:
+        conversation = Conversation(user_id=current_user.id, title=_title_from_message(payload.message))
+        session.add(conversation)
+        await session.flush()
+
+    conversation.updated_at = datetime.now(UTC)
+    session.add(
+        Message(
+            conversation_id=conversation.id,
+            role="user",
+            content=payload.message,
+        )
+    )
+    await session.commit()
+    await session.refresh(conversation)
+    return conversation
+
+
+def _title_from_message(message: str) -> str:
+    title = " ".join(message.strip().split())
+    if not title:
+        return "New Chat"
+    return title[:60]
+
+
+def _sources_from_tool_results(tool_results: dict[str, Any]) -> list[dict[str, str]] | None:
+    sources: list[dict[str, str]] = []
+    for name, summaries in tool_results.items():
+        for summary in summaries or []:
+            if not isinstance(summary, dict):
+                continue
+            ticker = str(summary.get("ticker") or name)
+            if name == "get_quote":
+                confidence = str(summary.get("confidence") or "?")
+                ok_sources = summary.get("ok_sources") or []
+                sources.append(
+                    {
+                        "title": f"{ticker} — {confidence} confidence ({len(ok_sources)} sources)",
+                        "domain": "midas",
+                    }
+                )
+            elif name == "get_news":
+                count = int(summary.get("count") or 0)
+                suffix = "" if count == 1 else "s"
+                sources.append(
+                    {
+                        "title": f"{ticker} — {count} headline{suffix} (24h)",
+                        "domain": "midas",
+                    }
+                )
+            elif name == "get_company_info":
+                sources.append(
+                    {
+                        "title": f"{ticker} — fundamentals (yfinance + Screener)",
+                        "domain": "midas",
+                    }
+                )
+            elif name in {"get_technicals", "get_levels", "get_holding"}:
+                label = name.replace("get_", "").replace("_", " ")
+                sources.append({"title": f"{ticker} — {label}", "domain": "midas"})
+    return sources or None

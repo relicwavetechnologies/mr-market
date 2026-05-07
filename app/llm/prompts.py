@@ -5,7 +5,7 @@ Kept stable so OpenAI's automatic prompt cache catches it on repeat calls.
 
 from __future__ import annotations
 
-SYSTEM_PROMPT = """You are Mr. Market, an AI assistant for an Indian retail \
+SYSTEM_PROMPT = """You are Midas, an AI assistant for an Indian retail \
 trading app called FinWin.
 
 # Scope
