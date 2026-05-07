@@ -10,6 +10,7 @@ import {
 import { ChatContainer } from '@/components/chat/ChatContainer';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { AuthBanner } from '@/components/common/AuthBanner';
+import { ToastIsland } from '@/components/common/ToastIsland';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useChatStore } from '@/stores/chatStore';
@@ -103,6 +104,7 @@ export function ChatPage() {
 
       <div className="shrink-0 px-6 pb-2">
         <div className="mx-auto max-w-3xl">
+          <ToastIsland />
           <ChatInput
             onSubmit={sendMessage}
             placeholder="Ask a follow-up..."

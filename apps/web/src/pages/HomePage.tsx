@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { SearchInput } from '@/components/home/SearchInput';
 import { SuggestionChips } from '@/components/home/SuggestionChips';
 import { AuthBanner } from '@/components/common/AuthBanner';
+import { ToastIsland } from '@/components/common/ToastIsland';
 import { useChatStore } from '@/stores/chatStore';
 
 export function HomePage() {
@@ -24,6 +25,7 @@ export function HomePage() {
             Midas
           </h1>
 
+          <ToastIsland />
           <div className="mb-2">
             <SearchInput onSubmit={handleSubmit} placeholder="Ask anything..." autoFocus />
           </div>

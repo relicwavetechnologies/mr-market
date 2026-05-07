@@ -1,5 +1,4 @@
 import { Check, Loader2, AlertTriangle } from 'lucide-react';
-import { Disclaimer } from '@/components/common/Disclaimer';
 import type { Message, ToolEvent } from '@/types';
 import { parseMarkdown } from '@/utils/parseMarkdown';
 import { ToolCards } from './ToolCards';
@@ -73,8 +72,6 @@ function AssistantMessage({ message }: { message: Message }) {
           </p>
         </div>
       )}
-
-      {!isStreaming && hasContent && !blocked && <Disclaimer />}
     </div>
   );
 }
