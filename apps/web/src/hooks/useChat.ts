@@ -125,6 +125,7 @@ export function useChat() {
     conversations,
     activeConversation,
     activeConversationId,
+    messages: activeConversation?.messages ?? [],
     isLoading,
     sendMessage,
     createConversation,

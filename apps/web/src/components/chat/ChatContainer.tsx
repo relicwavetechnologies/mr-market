@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import type { Message } from "@/types";
 import { useChat } from "@/hooks/useChat";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { ChatInput } from "@/components/chat/ChatInput";
@@ -44,7 +45,7 @@ export function ChatContainer() {
         )}
 
         <div className="mx-auto max-w-3xl space-y-4">
-          {messages.map((msg) => (
+          {messages.map((msg: Message) => (
             <MessageBubble key={msg.id} message={msg} />
           ))}
           {isLoading && <TypingIndicator />}

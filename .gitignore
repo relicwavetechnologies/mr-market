@@ -3,45 +3,36 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
-*.egg-info/
-*.egg
-dist/
-build/
-.eggs/
+.Python
 .venv/
 venv/
-*.whl
-
-# Node
-node_modules/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
 dist/
-.cache/
-*.tsbuildinfo
+build/
+wheels/
 
-# Environment
+# Env
 .env
 .env.local
 .env.*.local
 
-# IDE
-.idea/
+# Local context (used by wiki-sync)
+.context/
+
+# Editor
 .vscode/
+.idea/
 *.swp
-*.swo
-*~
 .DS_Store
 
-# Testing
-.coverage
-htmlcov/
-.pytest_cache/
-.mypy_cache/
+# Frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
 
-# Docker
+# Logs
 *.log
-
-# Alembic
-alembic/versions/*.pyc
-
-# OS
-Thumbs.db
