@@ -7,6 +7,7 @@ from redis import asyncio as aioredis
 
 from app.api import (
     auth,
+    backtest,
     chat,
     chats,
     deals,
@@ -14,10 +15,13 @@ from app.api import (
     holding,
     levels,
     news,
+    portfolio,
     quote,
     research,
+    screener,
     technicals,
     users,
+    watchlist,
 )
 from app.config import get_settings
 
@@ -75,6 +79,11 @@ def create_app() -> FastAPI:
     app.include_router(holding.router)
     app.include_router(deals.router)
     app.include_router(research.router)
+    # Phase-3 stub endpoints (day-1 hand-off; real impl in P3-A2 → P3-A7).
+    app.include_router(screener.router)
+    app.include_router(portfolio.router)
+    app.include_router(backtest.router)
+    app.include_router(watchlist.router)
     app.include_router(chat.router)
     return app
 

@@ -1,0 +1,101 @@
+ticker,exchange,yahoo_symbol,name,sector,industry
+RELIANCE,NSE,RELIANCE.NS,Reliance Industries Ltd,Energy,Refineries
+TCS,NSE,TCS.NS,Tata Consultancy Services Ltd,IT,IT Services
+HDFCBANK,NSE,HDFCBANK.NS,HDFC Bank Ltd,Financial Services,Private Bank
+BHARTIARTL,NSE,BHARTIARTL.NS,Bharti Airtel Ltd,Telecom,Telecom Services
+ICICIBANK,NSE,ICICIBANK.NS,ICICI Bank Ltd,Financial Services,Private Bank
+INFY,NSE,INFY.NS,Infosys Ltd,IT,IT Services
+SBIN,NSE,SBIN.NS,State Bank of India,Financial Services,Public Bank
+LT,NSE,LT.NS,Larsen & Toubro Ltd,Construction,Engineering
+ITC,NSE,ITC.NS,ITC Ltd,FMCG,Diversified FMCG
+HINDUNILVR,NSE,HINDUNILVR.NS,Hindustan Unilever Ltd,FMCG,Personal Care
+BAJFINANCE,NSE,BAJFINANCE.NS,Bajaj Finance Ltd,Financial Services,NBFC
+KOTAKBANK,NSE,KOTAKBANK.NS,Kotak Mahindra Bank Ltd,Financial Services,Private Bank
+HCLTECH,NSE,HCLTECH.NS,HCL Technologies Ltd,IT,IT Services
+MARUTI,NSE,MARUTI.NS,Maruti Suzuki India Ltd,Auto,Passenger Cars
+SUNPHARMA,NSE,SUNPHARMA.NS,Sun Pharmaceutical Industries Ltd,Pharma,Pharmaceuticals
+TITAN,NSE,TITAN.NS,Titan Company Ltd,Consumer Discretionary,Consumer Durables
+M&M,NSE,M%26M.NS,Mahindra & Mahindra Ltd,Auto,Auto
+AXISBANK,NSE,AXISBANK.NS,Axis Bank Ltd,Financial Services,Private Bank
+NTPC,NSE,NTPC.NS,NTPC Ltd,Power,Power Generation
+ASIANPAINT,NSE,ASIANPAINT.NS,Asian Paints Ltd,Consumer Discretionary,Paints
+BAJAJFINSV,NSE,BAJAJFINSV.NS,Bajaj Finserv Ltd,Financial Services,Insurance
+ONGC,NSE,ONGC.NS,Oil and Natural Gas Corporation Ltd,Energy,Oil & Gas
+ULTRACEMCO,NSE,ULTRACEMCO.NS,UltraTech Cement Ltd,Construction Materials,Cement
+WIPRO,NSE,WIPRO.NS,Wipro Ltd,IT,IT Services
+ADANIENT,NSE,ADANIENT.NS,Adani Enterprises Ltd,Diversified,Diversified
+JSWSTEEL,NSE,JSWSTEEL.NS,JSW Steel Ltd,Metals,Steel
+POWERGRID,NSE,POWERGRID.NS,Power Grid Corporation of India Ltd,Power,Power Transmission
+TATASTEEL,NSE,TATASTEEL.NS,Tata Steel Ltd,Metals,Steel
+TATAMOTORS,NSE,TATAMOTORS.NS,Tata Motors Ltd,Auto,Auto
+COALINDIA,NSE,COALINDIA.NS,Coal India Ltd,Energy,Coal
+NESTLEIND,NSE,NESTLEIND.NS,Nestle India Ltd,FMCG,Packaged Foods
+TECHM,NSE,TECHM.NS,Tech Mahindra Ltd,IT,IT Services
+HDFCLIFE,NSE,HDFCLIFE.NS,HDFC Life Insurance Co Ltd,Financial Services,Insurance
+ADANIPORTS,NSE,ADANIPORTS.NS,Adani Ports and SEZ Ltd,Services,Ports
+BAJAJ-AUTO,NSE,BAJAJ-AUTO.NS,Bajaj Auto Ltd,Auto,Two Wheelers
+GRASIM,NSE,GRASIM.NS,Grasim Industries Ltd,Construction Materials,Cement
+DRREDDY,NSE,DRREDDY.NS,Dr Reddy's Laboratories Ltd,Pharma,Pharmaceuticals
+INDUSINDBK,NSE,INDUSINDBK.NS,IndusInd Bank Ltd,Financial Services,Private Bank
+CIPLA,NSE,CIPLA.NS,Cipla Ltd,Pharma,Pharmaceuticals
+EICHERMOT,NSE,EICHERMOT.NS,Eicher Motors Ltd,Auto,Two Wheelers
+SBILIFE,NSE,SBILIFE.NS,SBI Life Insurance Co Ltd,Financial Services,Insurance
+HEROMOTOCO,NSE,HEROMOTOCO.NS,Hero MotoCorp Ltd,Auto,Two Wheelers
+APOLLOHOSP,NSE,APOLLOHOSP.NS,Apollo Hospitals Enterprise Ltd,Healthcare,Hospitals
+TATACONSUM,NSE,TATACONSUM.NS,Tata Consumer Products Ltd,FMCG,Packaged Foods
+BRITANNIA,NSE,BRITANNIA.NS,Britannia Industries Ltd,FMCG,Packaged Foods
+DIVISLAB,NSE,DIVISLAB.NS,Divi's Laboratories Ltd,Pharma,Pharmaceuticals
+LTIM,NSE,LTIM.NS,LTIMindtree Ltd,IT,IT Services
+SHRIRAMFIN,NSE,SHRIRAMFIN.NS,Shriram Finance Ltd,Financial Services,NBFC
+TRENT,NSE,TRENT.NS,Trent Ltd,Consumer Discretionary,Retail
+BEL,NSE,BEL.NS,Bharat Electronics Ltd,Capital Goods,Defence
+ABB,NSE,ABB.NS,ABB India Ltd,Capital Goods,Heavy Electrical Equipment
+ADANIGREEN,NSE,ADANIGREEN.NS,Adani Green Energy Ltd,Power,Renewable Energy
+ADANIPOWER,NSE,ADANIPOWER.NS,Adani Power Ltd,Power,Power Generation
+ATGL,NSE,ATGL.NS,Adani Total Gas Ltd,Gas Distribution,City Gas Distribution
+AMBUJACEM,NSE,AMBUJACEM.NS,Ambuja Cements Ltd,Cement,Cement
+BAJAJHLDNG,NSE,BAJAJHLDNG.NS,Bajaj Holdings & Investment Ltd,Financial Services,Investment Holding
+BANKBARODA,NSE,BANKBARODA.NS,Bank of Baroda,Financial Services,Public Bank
+BERGEPAINT,NSE,BERGEPAINT.NS,Berger Paints India Ltd,Consumer Durables,Paints
+BHEL,NSE,BHEL.NS,Bharat Heavy Electricals Ltd,Capital Goods,Heavy Electrical Equipment
+BOSCHLTD,NSE,BOSCHLTD.NS,Bosch Ltd,Auto,Auto Components
+BPCL,NSE,BPCL.NS,Bharat Petroleum Corp Ltd,Energy,Refineries
+CANBK,NSE,CANBK.NS,Canara Bank,Financial Services,Public Bank
+CGPOWER,NSE,CGPOWER.NS,CG Power & Industrial Solutions Ltd,Capital Goods,Heavy Electrical Equipment
+CHOLAFIN,NSE,CHOLAFIN.NS,Cholamandalam Investment & Finance Co Ltd,Financial Services,NBFC
+COLPAL,NSE,COLPAL.NS,Colgate-Palmolive (India) Ltd,FMCG,Personal Care
+DABUR,NSE,DABUR.NS,Dabur India Ltd,FMCG,Diversified FMCG
+DLF,NSE,DLF.NS,DLF Ltd,Realty,Real Estate
+DMART,NSE,DMART.NS,Avenue Supermarts Ltd,Retail,Retailing
+GAIL,NSE,GAIL.NS,GAIL (India) Ltd,Gas Distribution,Gas Transmission
+GODREJCP,NSE,GODREJCP.NS,Godrej Consumer Products Ltd,FMCG,Personal Care
+HAVELLS,NSE,HAVELLS.NS,Havells India Ltd,Consumer Durables,Electrical Equipment
+HINDPETRO,NSE,HINDPETRO.NS,Hindustan Petroleum Corp Ltd,Energy,Refineries
+HINDZINC,NSE,HINDZINC.NS,Hindustan Zinc Ltd,Metals,Non-ferrous Metals
+ICICIGI,NSE,ICICIGI.NS,ICICI Lombard General Insurance Co Ltd,Insurance,General Insurance
+ICICIPRULI,NSE,ICICIPRULI.NS,ICICI Prudential Life Insurance Co Ltd,Insurance,Life Insurance
+INDHOTEL,NSE,INDHOTEL.NS,The Indian Hotels Co Ltd,Consumer Services,Hotels
+INDIGO,NSE,INDIGO.NS,InterGlobe Aviation Ltd,Transportation,Airlines
+IOC,NSE,IOC.NS,Indian Oil Corp Ltd,Energy,Refineries
+IRCTC,NSE,IRCTC.NS,Indian Railway Catering & Tourism Corp Ltd,Consumer Services,Travel & Tourism
+IRFC,NSE,IRFC.NS,Indian Railway Finance Corp Ltd,Financial Services,Specialised Finance
+JINDALSTEL,NSE,JINDALSTEL.NS,Jindal Steel & Power Ltd,Metals,Iron & Steel
+JSWENERGY,NSE,JSWENERGY.NS,JSW Energy Ltd,Power,Power Generation
+LICI,NSE,LICI.NS,Life Insurance Corp of India,Insurance,Life Insurance
+LODHA,NSE,LODHA.NS,Macrotech Developers Ltd (Lodha),Realty,Real Estate
+MARICO,NSE,MARICO.NS,Marico Ltd,FMCG,Personal Care
+MOTHERSON,NSE,MOTHERSON.NS,Samvardhana Motherson International Ltd,Auto,Auto Components
+NAUKRI,NSE,NAUKRI.NS,Info Edge (India) Ltd,IT,Internet & Catalogue Retail
+PFC,NSE,PFC.NS,Power Finance Corp Ltd,Financial Services,Specialised Finance
+PIDILITIND,NSE,PIDILITIND.NS,Pidilite Industries Ltd,Chemicals,Specialty Chemicals
+PNB,NSE,PNB.NS,Punjab National Bank,Financial Services,Public Bank
+POLICYBZR,NSE,POLICYBZR.NS,PB Fintech Ltd (Policybazaar),Financial Services,Insurance Broking
+RECLTD,NSE,RECLTD.NS,REC Ltd,Financial Services,Specialised Finance
+SBICARD,NSE,SBICARD.NS,SBI Cards & Payment Services Ltd,Financial Services,Card Services
+SIEMENS,NSE,SIEMENS.NS,Siemens Ltd,Capital Goods,Heavy Electrical Equipment
+SRF,NSE,SRF.NS,SRF Ltd,Chemicals,Specialty Chemicals
+TATAPOWER,NSE,TATAPOWER.NS,Tata Power Co Ltd,Power,Power Generation
+TORNTPHARM,NSE,TORNTPHARM.NS,Torrent Pharmaceuticals Ltd,Pharma,Pharmaceuticals
+TVSMOTOR,NSE,TVSMOTOR.NS,TVS Motor Co Ltd,Auto,2-Wheelers
+UNITDSPR,NSE,UNITDSPR.NS,United Spirits Ltd,Consumer Goods,Beverages
+ZYDUSLIFE,NSE,ZYDUSLIFE.NS,Zydus Lifesciences Ltd,Pharma,Pharmaceuticals
