@@ -75,24 +75,40 @@ Allowed intents and examples:
                    "from TCS annual report, comments on AI"               → research, TCS
                    "INFY chairman's letter on margins"                     → research, INFY
 
-- "advisory"     → buy / sell / hold opinion, price target, stop-loss, entry
-                   level, F&O strategy, intraday view. **The bot answers these
-                   with an analyst view** in internal-tool mode.
-                   "should I buy reliance"       → advisory, RELIANCE
-                   "target for adani"            → advisory, ADANIENT
-                   "SL for HDFC bank"            → advisory, HDFCBANK
-                   "intraday call for tcs"       → advisory, TCS
+- "advisory"     → buy / sell / hold opinion, price target, fair value,
+                   upside, stop-loss, entry level, F&O strategy, intraday
+                   view, swing-trade setup. **The bot answers these with an
+                   analyst view** in internal-tool mode.
+                   "should I buy reliance"        → advisory, RELIANCE
+                   "target for adani"             → advisory, ADANIENT
+                   "fair value of TCS"            → advisory, TCS
+                   "how much upside in HDFC bank" → advisory, HDFCBANK
+                   "SL for HDFC bank"             → advisory, HDFCBANK
+                   "intraday call for tcs"        → advisory, TCS
+                   "swing setup for INFY"         → advisory, INFY
 
-- "education"    → generic concept (no specific ticker).
+- "education"    → generic financial / market concept, no specific ticker.
                    "what is P/E ratio"           → education, null
+                   "what does market cap mean"   → education, null
+                   "explain dividend yield"      → education, null
                    "explain stop loss"           → education, null
+                   "what is circuit filter"      → education, null
 
 - "refuse"       → genuinely off-topic / nonsense / non-financial.
+                   ONLY for things truly outside markets/finance. Personal
+                   investing questions (where should I invest, recommend a
+                   stock, my portfolio) are "advisory", NOT "refuse".
                    "what's the weather in mumbai" → refuse, null
                    "asdfghjkl"                    → refuse, null
                    "tell me a joke"               → refuse, null
+                   (Counter-example: "where should I invest 50k" → advisory)
 
-- "other"        → anything that doesn't fit above (greetings, multi-topic).
+- "other"        → anything that doesn't fit above (greetings, multi-topic
+                   asks like "give me X's price, RSI and holdings" — when
+                   it's a clean multi-tool blend, prefer "other" so the
+                   workhorse sees the full tool catalog).
+                   "hi"                           → other, null
+                   "price RSI and holding for X"  → other, X
 
 CRITICAL:
 - Buy/sell/target/SL/intraday/F&O questions are "advisory", NOT "refuse".
