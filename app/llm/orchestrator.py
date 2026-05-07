@@ -192,6 +192,63 @@ def _summarise(name: str, payload: dict[str, Any]) -> dict[str, Any]:
             "top_hits": top_hits,
             "documents": documents,
         }
+    if name == "run_screener":
+        tickers = payload.get("tickers") or []
+        top_tickers = [t.get("symbol") or t for t in tickers[:5]] if tickers else []
+        return {
+            "available": payload.get("available"),
+            "screener_name": payload.get("screener_name"),
+            "expr": payload.get("expr"),
+            "n_matches": len(tickers),
+            "universe_size": payload.get("universe_size"),
+            "exec_ms": payload.get("exec_ms"),
+            "top_tickers": top_tickers,
+            "error": payload.get("error"),
+        }
+    if name == "analyse_portfolio":
+        return {
+            "available": payload.get("available"),
+            "portfolio_id": payload.get("portfolio_id"),
+            "concentration": payload.get("concentration"),
+            "sector_pct": payload.get("sector_pct"),
+            "top_5_pct": payload.get("top_5_pct"),
+            "beta_blend": payload.get("beta_blend"),
+            "div_yield": payload.get("div_yield"),
+            "drawdown_1y": payload.get("drawdown_1y"),
+            "error": payload.get("error"),
+        }
+    if name == "propose_ideas":
+        ideas = payload.get("ideas") or []
+        compact_ideas = [
+            {"ticker": i.get("ticker"), "score": i.get("score")}
+            for i in ideas[:5]
+        ]
+        return {
+            "available": payload.get("available"),
+            "risk_profile": payload.get("risk_profile"),
+            "theme": payload.get("theme"),
+            "n_ideas": len(ideas),
+            "ideas": compact_ideas,
+            "error": payload.get("error"),
+        }
+    if name == "backtest_screener":
+        return {
+            "available": payload.get("available"),
+            "screener_name": payload.get("screener_name"),
+            "period_days": payload.get("period_days"),
+            "hit_rate": payload.get("hit_rate"),
+            "mean_return": payload.get("mean_return"),
+            "worst_drawdown": payload.get("worst_drawdown"),
+            "n_signals": payload.get("n_signals"),
+            "error": payload.get("error"),
+        }
+    if name == "add_to_watchlist":
+        return {
+            "ok": payload.get("ok"),
+            "ticker": payload.get("ticker"),
+            "watchlist_size": payload.get("watchlist_size"),
+            "error": payload.get("error"),
+        }
     if name == "remember_fact":
         return {
             "stored": payload.get("stored"),
@@ -340,7 +397,8 @@ async def run_chat(
             "I'm an internal stock-market analyst tool — that question is "
             "outside my scope. I can give you analyst-style views on Indian "
             "equities (price, news, fundamentals, technicals, levels, "
-            "shareholding, institutional flows). What would you like?"
+            "shareholding, institutional flows, screeners, portfolio analysis, "
+            "trade ideas, backtests). What would you like?"
         )
         for chunk in _chunk(msg, size=20):
             yield {"type": "delta", "text": chunk}

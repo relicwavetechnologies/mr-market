@@ -31,6 +31,10 @@ Intent = Literal[
     "holding",  # "promoter holding" / "who owns X" / "FII flow"
     "deals",  # "block deals on X" / "institutional flows"
     "research",  # "from X's annual report" / "what did mgmt say about Y"
+    "screener",  # "screen for oversold quality" / "RSI < 30 AND good PE"
+    "portfolio",  # "analyse my portfolio" / "portfolio diagnostics"
+    "idea",  # "give me trade ideas" / "what should I look at"
+    "backtest",  # "backtest this screener" / "how did value_rebound do"
     "advisory",  # "should I buy X" / "target for X" / "SL for X"
     "education",  # "what is P/E ratio"
     "refuse",  # off-topic / nonsense / non-financial only
@@ -75,6 +79,34 @@ Allowed intents and examples:
                    "from TCS annual report, comments on AI"               → research, TCS
                    "INFY chairman's letter on margins"                     → research, INFY
 
+- "screener"     → run a named stock screener or a custom filter expression
+                   across the NIFTY-100 universe.
+                   "screen for oversold quality stocks"      → screener, null
+                   "RSI < 30 AND pe_trailing < 20"           → screener, null
+                   "run the value_rebound screener"          → screener, null
+                   "show me momentum breakout stocks"        → screener, null
+                   "stocks with promoter > 70 and low PE"    → screener, null
+
+- "portfolio"    → analyse an imported portfolio — concentration, sector
+                   exposure, beta, drawdown, dividend yield.
+                   "analyse my portfolio"                     → portfolio, null
+                   "what's my portfolio concentration"        → portfolio, null
+                   "sector breakdown of my holdings"          → portfolio, null
+                   "portfolio diagnostics"                    → portfolio, null
+
+- "idea"         → generate ranked trade ideas based on screener output,
+                   technicals, and holdings — risk-profile-aware.
+                   "give me 3 trade ideas"                    → idea, null
+                   "aggressive trade ideas for today"         → idea, null
+                   "what stocks should I look at"             → idea, null
+                   "value picks for a conservative investor"  → idea, null
+
+- "backtest"     → historical replay of a screener over 12 months — hit rate,
+                   mean return, worst drawdown, number of signals.
+                   "backtest the oversold_quality screener"   → backtest, null
+                   "how did value_rebound perform last year"  → backtest, null
+                   "backtest RSI < 30 AND pe < 15"            → backtest, null
+
 - "advisory"     → buy / sell / hold opinion, price target, fair value,
                    upside, stop-loss, entry level, F&O strategy, intraday
                    view, swing-trade setup. **The bot answers these with an
@@ -115,6 +147,10 @@ CRITICAL:
 - "refuse" is reserved for off-topic / nonsense only — NEVER for stock advice.
 - A factual question (price / news / fundamentals / technicals / holdings) is
   always its specific intent, never "advisory" and never "refuse".
+- Screener filter expressions ("RSI < 30 AND pe < 20") are "screener", not "technicals".
+- "give me trade ideas" / "what should I look at" is "idea", not "advisory".
+- "backtest this screener" is "backtest", not "screener".
+- "analyse my portfolio" is "portfolio", not "advisory".
 """
 
 
@@ -128,6 +164,10 @@ _VALID_INTENTS = {
     "holding",
     "deals",
     "research",
+    "screener",
+    "portfolio",
+    "idea",
+    "backtest",
     "advisory",
     "education",
     "refuse",
