@@ -1,60 +1,55 @@
-/** Format a number as INR currency (e.g., "1,247.50"). */
-export function formatINR(value: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
+export function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
 }
 
-/** Format a number as a percentage string (e.g., "+2.45%" or "-1.20%"). */
-export function formatPercent(value: number, decimals = 2): string {
-  const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toFixed(decimals)}%`;
+export function formatTimestamp(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+
+  if (diffSec < 60) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffHour < 24) return `${diffHour}h ago`;
+  if (diffDay === 1) return 'Yesterday';
+  if (diffDay < 7) return `${diffDay}d ago`;
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
-/** Format a Date or ISO string to a readable date (e.g., "7 May 2026"). */
-export function formatDate(date: Date | string): string {
-  const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
+export function groupByDate<T extends { updatedAt: Date }>(items: T[]): Record<string, T[]> {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-/** Format a Date or ISO string to a readable datetime. */
-export function formatDateTime(date: Date | string): string {
-  const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+  const groups: Record<string, T[]> = {};
 
-/**
- * Format large numbers in Indian notation.
- *   - >= 1,00,00,000 → "1.2Cr"
- *   - >= 1,00,000     → "1.2L"
- *   - >= 1,000        → "45K"
- *   - Otherwise       → as-is with commas
- */
-export function formatLargeNumber(value: number): string {
-  const abs = Math.abs(value);
-  const sign = value < 0 ? "-" : "";
+  for (const item of items) {
+    const itemDate = new Date(item.updatedAt);
+    let label: string;
 
-  if (abs >= 1_00_00_000) {
-    return `${sign}${(abs / 1_00_00_000).toFixed(1)}Cr`;
+    if (itemDate >= today) {
+      label = 'Today';
+    } else if (itemDate >= sevenDaysAgo) {
+      label = 'Previous 7 Days';
+    } else if (itemDate >= thirtyDaysAgo) {
+      label = 'Previous 30 Days';
+    } else {
+      label = 'Older';
+    }
+
+    if (!groups[label]) {
+      groups[label] = [];
+    }
+    groups[label].push(item);
   }
-  if (abs >= 1_00_000) {
-    return `${sign}${(abs / 1_00_000).toFixed(1)}L`;
-  }
-  if (abs >= 1_000) {
-    return `${sign}${(abs / 1_000).toFixed(1)}K`;
-  }
-  return new Intl.NumberFormat("en-IN").format(value);
+
+  return groups;
 }

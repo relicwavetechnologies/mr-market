@@ -1,21 +1,15 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { ChatPage } from "@/pages/ChatPage";
-import { OnboardingPage } from "@/pages/OnboardingPage";
-import { useUserStore } from "@/stores/userStore";
+import { Routes, Route } from 'react-router-dom';
+import { AppLayout } from '@/components/layout/AppLayout';
+import { HomePage } from '@/pages/HomePage';
+import { ChatPage } from '@/pages/ChatPage';
 
-export function App() {
-  const isOnboarded = useUserStore((s) => s.isOnboarded);
-
+export default function App() {
   return (
-    <BrowserRouter>
+    <AppLayout>
       <Routes>
-        <Route
-          path="/"
-          element={isOnboarded ? <ChatPage /> : <Navigate to="/onboarding" replace />}
-        />
-        <Route path="/onboarding" element={<OnboardingPage />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/" element={<HomePage />} />
+        <Route path="/chat/:id" element={<ChatPage />} />
       </Routes>
-    </BrowserRouter>
+    </AppLayout>
   );
 }

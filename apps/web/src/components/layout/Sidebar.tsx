@@ -1,17 +1,40 @@
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from 'react-router-dom';
 import {
-  Plus,
-  BookOpen,
-  History,
-  MessageSquare,
-  PanelLeftClose,
+  ArrowUpRight,
+  Bell,
+  Briefcase,
+  Clock,
+  Compass,
+  Moon,
   PanelLeft,
+  PanelLeftClose,
+  Pencil,
+  Settings,
+  Star,
+  Sun,
   TrendingUp,
-  Sparkles,
-} from "lucide-react";
-import { useUIStore } from "@/stores/uiStore";
-import { useChatStore } from "@/stores/chatStore";
-import { useAuthStore } from "@/stores/authStore";
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useUIStore } from '@/stores/uiStore';
+import { useChatStore } from '@/stores/chatStore';
+import { useAuthStore } from '@/stores/authStore';
+import { useThemeStore } from '@/stores/themeStore';
+import { cn } from '@/lib/utils';
+
+interface NavItem {
+  icon: LucideIcon;
+  label: string;
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { icon: TrendingUp, label: 'Markets' },
+  { icon: Star, label: 'Watchlist' },
+  { icon: Briefcase, label: 'Portfolio' },
+  { icon: Compass, label: 'Discover' },
+];
 
 export function Sidebar() {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
@@ -20,13 +43,15 @@ export function Sidebar() {
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const user = useAuthStore((s) => s.user);
+  const setShowAuthModal = useAuthStore((s) => s.setShowAuthModal);
+  const theme = useThemeStore((s) => s.theme);
+  const toggleTheme = useThemeStore((s) => s.toggleTheme);
 
   const navigate = useNavigate();
-  const location = useLocation();
 
   const handleNewChat = () => {
     setActiveConversation(null);
-    navigate("/");
+    navigate('/');
   };
 
   const handleConversationClick = (id: string) => {
@@ -34,130 +59,209 @@ export function Sidebar() {
     navigate(`/chat/${id}`);
   };
 
-  const isHome = location.pathname === "/";
-
-  return (
-    <>
-      {/* Toggle button for collapsed state */}
-      {!sidebarOpen && (
-        <button
-          onClick={toggleSidebar}
-          className="fixed left-3 top-3 z-40 rounded-lg p-2 text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
-          aria-label="Open sidebar"
-        >
-          <PanelLeft size={20} />
-        </button>
-      )}
-
-      {/* Sidebar panel */}
-      <aside
-        className={`flex h-full flex-col border-r border-border-subtle bg-bg-secondary transition-all duration-300 ${
-          sidebarOpen ? "w-[260px] min-w-[260px]" : "w-0 min-w-0 overflow-hidden"
-        }`}
-      >
-        <div className="flex h-full flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3">
-            <div className="flex items-center gap-2">
-              <TrendingUp size={20} className="text-accent" />
-              <span className="text-sm font-semibold text-text-primary">
-                Mr. Market
-              </span>
-            </div>
-            <button
+  if (!sidebarOpen) {
+    return (
+      <aside className="flex h-full w-14 min-w-14 flex-col items-center border-r border-border bg-sidebar py-3">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
               onClick={toggleSidebar}
-              className="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
-              aria-label="Close sidebar"
+              className="text-muted-foreground hover:text-foreground"
+              aria-label="Open sidebar"
             >
-              <PanelLeftClose size={18} />
-            </button>
-          </div>
+              <PanelLeft className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">Expand sidebar</TooltipContent>
+        </Tooltip>
 
-          {/* New Chat button */}
-          <div className="px-3 pb-2">
-            <button
+        <div className="mt-2 flex h-8 w-8 items-center justify-center rounded-md bg-foreground/10">
+          <TrendingUp className="size-4 text-foreground" />
+        </div>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
               onClick={handleNewChat}
-              className="flex w-full items-center gap-2 rounded-lg border border-border bg-bg-tertiary px-3 py-2 text-sm text-text-primary transition-colors hover:bg-bg-hover"
+              className="mt-3 text-muted-foreground hover:text-foreground"
+              aria-label="New chat"
             >
-              <Plus size={16} />
-              <span>New Chat</span>
-            </button>
-          </div>
+              <Pencil className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">New thread</TooltipContent>
+        </Tooltip>
 
-          {/* Nav items */}
-          <nav className="px-3 pb-2">
-            <button
-              onClick={() => navigate("/")}
-              className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
-                isHome
-                  ? "bg-bg-hover text-text-primary"
-                  : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-              }`}
-            >
-              <BookOpen size={16} />
-              <span>Library</span>
-            </button>
-            <button
-              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
-            >
-              <History size={16} />
-              <span>History</span>
-            </button>
-          </nav>
-
-          {/* Divider */}
-          <div className="mx-3 border-t border-border-subtle" />
-
-          {/* Chat history */}
-          <div className="flex-1 overflow-y-auto px-3 py-2">
-            {conversations.length === 0 ? (
-              <p className="px-3 py-4 text-center text-xs text-text-muted">
-                No conversations yet
-              </p>
-            ) : (
-              <div className="space-y-0.5">
-                {conversations.map((conv) => (
-                  <button
-                    key={conv.id}
-                    onClick={() => handleConversationClick(conv.id)}
-                    className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
-                      conv.id === activeConversationId
-                        ? "bg-bg-hover text-text-primary"
-                        : "text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-                    }`}
-                  >
-                    <MessageSquare size={14} className="shrink-0" />
-                    <span className="truncate">{conv.title}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* User profile at bottom */}
-          <div className="border-t border-border-subtle p-3">
-            <div className="flex items-center gap-3 rounded-lg px-2 py-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-bg-tertiary text-sm font-medium text-text-primary">
-                {user?.name
-                  ? user.name.charAt(0).toUpperCase()
-                  : "G"}
-              </div>
-              <div className="flex-1 overflow-hidden">
-                <p className="truncate text-sm text-text-primary">
-                  {user?.name ?? "Guest"}
-                </p>
-                <p className="truncate text-xs text-text-muted">
-                  {user?.email ?? "Sign in"}
-                </p>
-              </div>
-              <span className="flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
-                <Sparkles size={10} />
-                Pro
-              </span>
-            </div>
-          </div>
+        <div className="mt-auto flex flex-col items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={toggleTheme}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="Toggle theme"
+              >
+                {theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            </TooltipContent>
+          </Tooltip>
+          <button
+            onClick={() => (user ? undefined : setShowAuthModal(true))}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-foreground/10 text-xs font-medium text-foreground transition-colors hover:bg-foreground/20"
+            title={user?.name ?? 'Sign in'}
+          >
+            {user?.name ? user.name.charAt(0).toUpperCase() : 'G'}
+          </button>
         </div>
       </aside>
-    </>
+    );
+  }
+
+  const userName = user?.name ?? 'Guest';
+  const userInitial = userName.charAt(0).toUpperCase();
+  const userEmail = user?.email ?? 'Sign in';
+
+  return (
+    <aside className="flex h-full w-[244px] min-w-[244px] flex-col border-r border-border bg-sidebar">
+      {/* Header / logo */}
+      <div className="flex h-12 items-center justify-between px-4">
+        <button
+          onClick={handleNewChat}
+          className="flex items-center gap-2 outline-none"
+          aria-label="Mr. Market home"
+        >
+          <span className="flex size-6 items-center justify-center rounded-md bg-foreground/10">
+            <TrendingUp className="size-3.5 text-foreground" />
+          </span>
+          <span className="text-[13px] font-medium tracking-tight text-foreground">
+            Mr. Market
+          </span>
+        </button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={toggleSidebar}
+          className="text-muted-foreground hover:text-foreground"
+          aria-label="Collapse sidebar"
+        >
+          <PanelLeftClose className="size-3.5" />
+        </Button>
+      </div>
+
+      {/* Primary nav */}
+      <nav className="px-2 pt-1">
+        <Button
+          variant="ghost"
+          onClick={handleNewChat}
+          className="h-9 w-full justify-start gap-3 px-3 text-[13px] font-medium text-foreground hover:bg-accent"
+        >
+          <Pencil className="size-4 text-muted-foreground" />
+          <span>New</span>
+        </Button>
+        {NAV_ITEMS.map((item) => (
+          <Button
+            key={item.label}
+            variant="ghost"
+            className="h-9 w-full justify-start gap-3 px-3 text-[13px] font-normal text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <item.icon className="size-4" />
+            <span>{item.label}</span>
+          </Button>
+        ))}
+      </nav>
+
+      {/* History */}
+      <div className="flex min-h-0 flex-1 flex-col pt-2">
+        <div className="flex h-8 items-center gap-3 px-5 text-[13px] text-muted-foreground">
+          <Clock className="size-4" />
+          <span>History</span>
+        </div>
+        <ScrollArea className="flex-1">
+          <div className="px-3 pb-3">
+            {conversations.length === 0 ? (
+              <p className="px-2 py-2 text-xs text-muted-foreground/70">No history yet</p>
+            ) : (
+              <ul className="flex flex-col gap-px">
+                {conversations.map((conv) => (
+                  <li key={conv.id}>
+                    <button
+                      onClick={() => handleConversationClick(conv.id)}
+                      className={cn(
+                        'flex h-7 w-full items-center rounded-md px-2 text-left text-[12.5px] transition-colors',
+                        conv.id === activeConversationId
+                          ? 'bg-accent text-foreground'
+                          : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+                      )}
+                      title={conv.title}
+                    >
+                      <span className="truncate">{conv.title}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </ScrollArea>
+      </div>
+
+      {/* Footer: upgrade + user */}
+      <div className="px-3 pb-3 pt-2">
+        <Button
+          variant="outline"
+          className="mb-2 h-8 w-full justify-start gap-2 rounded-full border-border/80 bg-transparent px-3 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <ArrowUpRight className="size-3.5" />
+          <span>Upgrade plan</span>
+          <span className="ml-auto size-1.5 rounded-full bg-teal" aria-hidden />
+        </Button>
+
+        <div
+          onClick={() => (user ? undefined : setShowAuthModal(true))}
+          className="flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-accent"
+        >
+          <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-teal to-accent-blue text-[11px] font-medium text-background">
+            {userInitial}
+          </div>
+          <div className="min-w-0 flex-1 leading-tight">
+            <p className="truncate text-[12px] font-medium text-foreground">{userName}</p>
+            {!user && <p className="truncate text-[10px] text-muted-foreground">{userEmail}</p>}
+          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleTheme();
+                }}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="Toggle theme"
+              >
+                {theme === 'dark' ? <Sun className="size-3.5" /> : <Moon className="size-3.5" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</TooltipContent>
+          </Tooltip>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={(e) => e.stopPropagation()}
+            className="text-muted-foreground hover:text-foreground"
+            aria-label={user ? 'Notifications' : 'Settings'}
+          >
+            {user ? <Bell className="size-3.5" /> : <Settings className="size-3.5" />}
+          </Button>
+        </div>
+      </div>
+    </aside>
   );
 }

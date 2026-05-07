@@ -1,62 +1,34 @@
-import { useEffect, useRef } from "react";
-import { useChat } from "@/hooks/useChat";
-import { MessageBubble } from "@/components/chat/MessageBubble";
-import { ChatInput } from "@/components/chat/ChatInput";
-import { TypingIndicator } from "@/components/chat/TypingIndicator";
+import { useEffect, useRef } from 'react';
+import { useChatStore } from '@/stores/chatStore';
+import { MessageBubble } from './MessageBubble';
+import { TypingIndicator } from './TypingIndicator';
+import { Separator } from '@/components/ui/separator';
 
 export function ChatContainer() {
-  const { messages, sendMessage, isLoading } = useChat();
+  const activeConversationId = useChatStore((s) => s.activeConversationId);
+  const messages = useChatStore((s) => s.messages);
+  const isGenerating = useChatStore((s) => s.isGenerating);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const currentMessages = activeConversationId
+    ? messages[activeConversationId] ?? []
+    : [];
+
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [currentMessages]);
 
   return (
-    <div className="flex flex-1 flex-col">
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
-        {messages.length === 0 && (
-          <div className="flex h-full items-center justify-center">
-            <div className="text-center">
-              <h2 className="mb-2 text-xl font-semibold text-gray-300">
-                Welcome to Mr. Market
-              </h2>
-              <p className="max-w-md text-sm text-gray-500">
-                Ask me about any Indian stock — fundamentals, technicals, news
-                sentiment, or shareholding patterns. Try something like:
-              </p>
-              <div className="mt-4 flex flex-wrap justify-center gap-2">
-                {["Analyse RELIANCE", "Is TCS overvalued?", "HDFC Bank technicals"].map(
-                  (suggestion) => (
-                    <button
-                      key={suggestion}
-                      onClick={() => sendMessage(suggestion)}
-                      className="rounded-full border border-gray-700 px-3 py-1.5 text-xs text-gray-400 transition-colors hover:border-emerald-600 hover:text-emerald-400"
-                    >
-                      {suggestion}
-                    </button>
-                  ),
-                )}
-              </div>
-            </div>
+    <div className="flex-1 overflow-y-auto px-6 pb-12 pt-8">
+      <div className="mx-auto max-w-3xl space-y-8">
+        {currentMessages.map((msg, idx) => (
+          <div key={msg.id}>
+            {idx > 0 && msg.role === 'user' && <Separator className="mb-8 bg-border/60" />}
+            <MessageBubble message={msg} />
           </div>
-        )}
-
-        <div className="mx-auto max-w-3xl space-y-4">
-          {messages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} />
-          ))}
-          {isLoading && <TypingIndicator />}
-          <div ref={scrollRef} />
-        </div>
-      </div>
-
-      {/* Input */}
-      <div className="border-t border-gray-800 px-4 py-3">
-        <div className="mx-auto max-w-3xl">
-          <ChatInput onSend={sendMessage} disabled={isLoading} />
-        </div>
+        ))}
+        {isGenerating && currentMessages.length === 0 && <TypingIndicator />}
+        <div ref={scrollRef} />
       </div>
     </div>
   );

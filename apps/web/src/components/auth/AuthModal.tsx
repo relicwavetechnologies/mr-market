@@ -1,56 +1,49 @@
-import { useState } from "react";
-import { X } from "lucide-react";
-import { useAuthStore } from "@/stores/authStore";
+import { useState } from 'react';
+import { Mail } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Separator } from '@/components/ui/separator';
+import { useAuthStore } from '@/stores/authStore';
 
 export function AuthModal() {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState('');
   const login = useAuthStore((s) => s.login);
+  const loginWithGoogle = useAuthStore((s) => s.loginWithGoogle);
+  const showAuthModal = useAuthStore((s) => s.showAuthModal);
   const setShowAuthModal = useAuthStore((s) => s.setShowAuthModal);
 
   const handleEmailLogin = async () => {
     if (!email.trim()) return;
-    await login(email.trim(), "");
-  };
-
-  const handleClose = () => {
-    setShowAuthModal(false);
+    await login(email.trim(), '');
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-        onClick={handleClose}
-      />
+    <Dialog open={showAuthModal} onOpenChange={setShowAuthModal}>
+      <DialogContent className="max-w-md gap-0 border-border/80 bg-card p-7 sm:rounded-2xl">
+        <DialogHeader className="space-y-2 text-center">
+          <DialogTitle className="text-center font-serif text-2xl font-normal leading-tight tracking-tight">
+            Sign up to unlock the full
+            <br />
+            potential of Mr. Market
+          </DialogTitle>
+          <DialogDescription className="text-center text-xs text-muted-foreground">
+            By continuing, you agree to our privacy policy.
+          </DialogDescription>
+        </DialogHeader>
 
-      {/* Modal card */}
-      <div className="relative z-10 mx-4 w-full max-w-md rounded-2xl border border-border bg-bg-secondary p-8">
-        {/* Close button */}
-        <button
-          onClick={handleClose}
-          className="absolute right-4 top-4 rounded-lg p-1.5 text-text-muted transition-colors hover:bg-bg-hover hover:text-text-primary"
-        >
-          <X size={18} />
-        </button>
-
-        {/* Heading */}
-        <h2 className="mb-2 text-center text-2xl font-semibold leading-tight text-text-primary">
-          Sign up below to unlock the full
-          <br />
-          potential of Mr. Market
-        </h2>
-        <p className="mb-8 text-center text-sm text-text-muted">
-          By continuing, you agree to our privacy policy.
-        </p>
-
-        {/* Social login buttons */}
-        <div className="space-y-3">
-          <button
-            onClick={() => login("user@gmail.com", "")}
-            className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-bg-tertiary px-4 py-3 text-sm font-medium text-text-primary transition-colors hover:bg-bg-hover"
+        <div className="mt-6 space-y-2.5">
+          <Button
+            variant="outline"
+            onClick={loginWithGoogle}
+            className="h-11 w-full justify-center gap-3 rounded-xl border-border/80 bg-secondary/40 text-sm font-medium hover:bg-accent"
           >
-            <svg viewBox="0 0 24 24" width="18" height="18">
+            <svg viewBox="0 0 24 24" className="size-4">
               <path
                 fill="#4285F4"
                 d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
@@ -69,52 +62,47 @@ export function AuthModal() {
               />
             </svg>
             Continue with Google
-          </button>
+          </Button>
 
-          <button
-            onClick={() => login("user@apple.com", "")}
-            className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-bg-tertiary px-4 py-3 text-sm font-medium text-text-primary transition-colors hover:bg-bg-hover"
+          <Button
+            variant="outline"
+            onClick={() => login('user@apple.com', '')}
+            className="h-11 w-full justify-center gap-3 rounded-xl border-border/80 bg-secondary/40 text-sm font-medium hover:bg-accent"
           >
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <svg viewBox="0 0 24 24" className="size-4 fill-foreground">
               <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
             </svg>
             Continue with Apple
-          </button>
+          </Button>
         </div>
 
-        {/* Divider */}
-        <div className="my-6 flex items-center gap-3">
-          <div className="h-px flex-1 bg-border" />
-          <span className="text-xs text-text-muted">or</span>
-          <div className="h-px flex-1 bg-border" />
+        <div className="my-5 flex items-center gap-3">
+          <Separator className="flex-1 bg-border/60" />
+          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">or</span>
+          <Separator className="flex-1 bg-border/60" />
         </div>
 
-        {/* Email input */}
-        <div className="space-y-3">
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleEmailLogin()}
-            placeholder="Enter your email"
-            className="w-full rounded-xl border border-border bg-bg-tertiary px-4 py-3 text-sm text-text-primary placeholder-text-muted outline-none transition-colors focus:border-accent"
-          />
-          <button
+        <div className="space-y-2.5">
+          <div className="relative">
+            <Mail className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleEmailLogin()}
+              placeholder="Enter your email"
+              className="h-11 w-full rounded-xl border border-border/80 bg-secondary/40 pl-10 pr-3 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-foreground/40"
+            />
+          </div>
+          <Button
             onClick={handleEmailLogin}
-            className="w-full rounded-xl bg-bg-tertiary px-4 py-3 text-sm font-medium text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary"
+            disabled={!email.trim()}
+            className="h-11 w-full rounded-xl bg-foreground text-sm font-medium text-background hover:bg-foreground/90"
           >
             Continue with email
-          </button>
+          </Button>
         </div>
-
-        {/* Close link */}
-        <button
-          onClick={handleClose}
-          className="mt-6 block w-full text-center text-sm text-text-muted transition-colors hover:text-text-secondary"
-        >
-          Close
-        </button>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

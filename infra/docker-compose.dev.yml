@@ -18,7 +18,7 @@ services:
       context: ../apps/web
       dockerfile: Dockerfile
     # In dev, run the Vite dev server directly instead of nginx
-    command: npm run dev -- --host
+    command: pnpm run dev -- --host
     ports:
       - "5173:5173"
     volumes:

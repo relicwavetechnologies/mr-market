@@ -1,37 +1,35 @@
-import { useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import { useChatStore } from "@/stores/chatStore";
-import { apiClient } from "@/services/api";
-import type { Message, Source } from "@/types";
+import { useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useChatStore } from '@/stores/chatStore';
+import { getMockResponse } from '@/services/mockData';
+import type { Message } from '@/types';
 
-/**
- * Custom hook for chat functionality.
- * Handles sending messages, streaming mock responses, and conversation management.
- */
 export function useChat() {
   const conversations = useChatStore((s) => s.conversations);
   const activeConversationId = useChatStore((s) => s.activeConversationId);
-  const isLoading = useChatStore((s) => s.isLoading);
+  const messages = useChatStore((s) => s.messages);
+  const isGenerating = useChatStore((s) => s.isGenerating);
   const createConversation = useChatStore((s) => s.createConversation);
-  const addMessage = useChatStore((s) => s.addMessage);
-  const updateMessage = useChatStore((s) => s.updateMessage);
+  const sendMessageToStore = useChatStore((s) => s.sendMessage);
+  const updateMessageContent = useChatStore((s) => s.updateMessageContent);
+  const updateMessageStreaming = useChatStore((s) => s.updateMessageStreaming);
+  const updateMessageSources = useChatStore((s) => s.updateMessageSources);
+  const updateMessageCompletionTime = useChatStore((s) => s.updateMessageCompletionTime);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
-  const setLoading = useChatStore((s) => s.setLoading);
-  const getActiveConversation = useChatStore((s) => s.getActiveConversation);
+  const setIsGenerating = useChatStore((s) => s.setIsGenerating);
 
   const navigate = useNavigate();
-  const streamBufferRef = useRef("");
   const abortRef = useRef(false);
 
-  const activeConversation = getActiveConversation();
+  const currentMessages = activeConversationId
+    ? messages[activeConversationId] ?? []
+    : [];
 
   const sendMessage = useCallback(
-    async (content: string) => {
-      if (!content.trim() || isLoading) return;
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || isGenerating) return;
 
-      const trimmed = content.trim();
-
-      // Create conversation if none is active
       let convId = activeConversationId;
       if (!convId) {
         convId = createConversation(trimmed);
@@ -41,93 +39,94 @@ export function useChat() {
       // Add user message
       const userMessage: Message = {
         id: crypto.randomUUID(),
-        role: "user",
+        role: 'user',
         content: trimmed,
         timestamp: new Date(),
       };
-      addMessage(convId, userMessage);
+      sendMessageToStore(convId, userMessage);
 
-      // Add placeholder assistant message for streaming
-      const assistantMessageId = crypto.randomUUID();
+      // Create assistant placeholder
+      const assistantId = crypto.randomUUID();
       const assistantMessage: Message = {
-        id: assistantMessageId,
-        role: "assistant",
-        content: "",
+        id: assistantId,
+        role: 'assistant',
+        content: '',
         sources: [],
         timestamp: new Date(),
         isStreaming: true,
       };
-      addMessage(convId, assistantMessage);
+      sendMessageToStore(convId, assistantMessage);
 
-      setLoading(true);
-      streamBufferRef.current = "";
+      setIsGenerating(true);
       abortRef.current = false;
 
+      const startTime = performance.now();
+
       try {
-        await apiClient.sendMessageStreaming(
-          convId,
-          trimmed,
-          (chunk: string) => {
-            if (abortRef.current) return;
-            streamBufferRef.current += chunk;
-            updateMessage(convId, assistantMessageId, streamBufferRef.current);
-          },
-          (sources: Source[]) => {
-            if (abortRef.current) return;
-            // Update sources on the assistant message
-            const store = useChatStore.getState();
-            const conv = store.conversations.find((c) => c.id === convId);
-            if (conv) {
-              const msg = conv.messages.find(
-                (m) => m.id === assistantMessageId,
-              );
-              if (msg) {
-                msg.sources = sources;
-              }
-            }
-          },
-          () => {
-            setLoading(false);
-            // Mark streaming as complete
-            const store = useChatStore.getState();
-            const conv = store.conversations.find((c) => c.id === convId);
-            if (conv) {
-              const msg = conv.messages.find(
-                (m) => m.id === assistantMessageId,
-              );
-              if (msg) {
-                msg.isStreaming = false;
-              }
-            }
-          },
-        );
+        const mockResponse = getMockResponse(trimmed);
+
+        // Send sources after a short delay
+        setTimeout(() => {
+          if (!abortRef.current) {
+            updateMessageSources(convId!, assistantId, mockResponse.sources);
+          }
+        }, 300);
+
+        // Stream character by character
+        let buffer = '';
+        for (let i = 0; i < mockResponse.content.length; i++) {
+          if (abortRef.current) break;
+
+          buffer += mockResponse.content[i];
+          updateMessageContent(convId!, assistantId, buffer);
+
+          // Variable delay for realistic feel
+          const char = mockResponse.content[i];
+          let delay: number;
+          if (char === '\n') {
+            delay = 12 + Math.random() * 18;
+          } else if (char === '.' || char === '!' || char === '?') {
+            delay = 25 + Math.random() * 30;
+          } else if (char === '|' || char === '-') {
+            delay = 1 + Math.random() * 3;
+          } else {
+            delay = 5 + Math.random() * 10;
+          }
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+
+        const elapsed = (performance.now() - startTime) / 1000;
+        updateMessageCompletionTime(convId!, assistantId, parseFloat(elapsed.toFixed(1)));
+        updateMessageStreaming(convId!, assistantId, false);
       } catch {
-        setLoading(false);
-        updateMessage(
-          convId,
-          assistantMessageId,
-          "Sorry, something went wrong. Please try again.",
-        );
+        updateMessageContent(convId!, assistantId, 'Sorry, something went wrong. Please try again.');
+        updateMessageStreaming(convId!, assistantId, false);
+      } finally {
+        setIsGenerating(false);
       }
     },
     [
       activeConversationId,
-      isLoading,
+      isGenerating,
       createConversation,
-      addMessage,
-      updateMessage,
-      setLoading,
+      sendMessageToStore,
+      updateMessageContent,
+      updateMessageStreaming,
+      updateMessageSources,
+      updateMessageCompletionTime,
+      setActiveConversation,
+      setIsGenerating,
       navigate,
-    ],
+    ]
   );
 
   return {
     conversations,
-    activeConversation,
-    activeConversationId,
-    isLoading,
+    messages: currentMessages,
+    isGenerating,
     sendMessage,
     createConversation,
     setActiveConversation,
+    activeConversationId,
   };
 }

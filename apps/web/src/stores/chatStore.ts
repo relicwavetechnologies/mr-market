@@ -1,80 +1,116 @@
-import { create } from "zustand";
-import type { Conversation, Message } from "@/types";
+import { create } from 'zustand';
+import type { Conversation, Message } from '@/types';
+import { mockConversations, mockMessages } from '@/services/mockData';
 
 interface ChatState {
   conversations: Conversation[];
   activeConversationId: string | null;
-  isLoading: boolean;
+  messages: Record<string, Message[]>;
+  isGenerating: boolean;
 
-  createConversation: (firstMessage?: string) => string;
-  addMessage: (conversationId: string, message: Message) => void;
-  updateMessage: (
-    conversationId: string,
-    messageId: string,
-    content: string,
-  ) => void;
+  createConversation: (title?: string) => string;
+  sendMessage: (conversationId: string, message: Message) => void;
+  updateMessageContent: (conversationId: string, messageId: string, content: string) => void;
+  updateMessageStreaming: (conversationId: string, messageId: string, isStreaming: boolean) => void;
+  updateMessageSources: (conversationId: string, messageId: string, sources: Message['sources']) => void;
+  updateMessageCompletionTime: (conversationId: string, messageId: string, time: number) => void;
   setActiveConversation: (id: string | null) => void;
-  getActiveConversation: () => Conversation | undefined;
-  setLoading: (loading: boolean) => void;
+  setIsGenerating: (generating: boolean) => void;
+  deleteConversation: (id: string) => void;
 }
 
-export const useChatStore = create<ChatState>((set, get) => ({
-  conversations: [],
+export const useChatStore = create<ChatState>((set) => ({
+  conversations: mockConversations,
   activeConversationId: null,
-  isLoading: false,
+  messages: mockMessages,
+  isGenerating: false,
 
-  createConversation: (firstMessage?: string) => {
+  createConversation: (title?: string) => {
     const id = crypto.randomUUID();
-    const now = new Date();
     const conversation: Conversation = {
       id,
-      title: firstMessage
-        ? firstMessage.length > 50
-          ? firstMessage.slice(0, 50) + "..."
-          : firstMessage
-        : "New Chat",
-      messages: [],
-      createdAt: now,
-      updatedAt: now,
+      title: title ?? 'New Chat',
+      lastMessage: '',
+      updatedAt: new Date(),
     };
     set((state) => ({
       conversations: [conversation, ...state.conversations],
       activeConversationId: id,
+      messages: { ...state.messages, [id]: [] },
     }));
     return id;
   },
 
-  addMessage: (conversationId: string, message: Message) => {
+  sendMessage: (conversationId: string, message: Message) => {
+    set((state) => {
+      const existing = state.messages[conversationId] ?? [];
+      const titleUpdate =
+        message.role === 'user' && existing.length === 0
+          ? message.content.length > 50
+            ? message.content.slice(0, 50) + '...'
+            : message.content
+          : undefined;
+
+      return {
+        messages: {
+          ...state.messages,
+          [conversationId]: [...existing, message],
+        },
+        conversations: state.conversations.map((c) =>
+          c.id === conversationId
+            ? {
+                ...c,
+                lastMessage: message.content.slice(0, 100),
+                updatedAt: new Date(),
+                ...(titleUpdate ? { title: titleUpdate } : {}),
+              }
+            : c
+        ),
+      };
+    });
+  },
+
+  updateMessageContent: (conversationId: string, messageId: string, content: string) => {
     set((state) => ({
-      conversations: state.conversations.map((conv) =>
-        conv.id === conversationId
-          ? {
-              ...conv,
-              messages: [...conv.messages, message],
-              updatedAt: new Date(),
-            }
-          : conv,
-      ),
+      messages: {
+        ...state.messages,
+        [conversationId]: (state.messages[conversationId] ?? []).map((m) =>
+          m.id === messageId ? { ...m, content } : m
+        ),
+      },
     }));
   },
 
-  updateMessage: (
-    conversationId: string,
-    messageId: string,
-    content: string,
-  ) => {
+  updateMessageStreaming: (conversationId: string, messageId: string, isStreaming: boolean) => {
     set((state) => ({
-      conversations: state.conversations.map((conv) =>
-        conv.id === conversationId
-          ? {
-              ...conv,
-              messages: conv.messages.map((msg) =>
-                msg.id === messageId ? { ...msg, content } : msg,
-              ),
-              updatedAt: new Date(),
-            }
-          : conv,
-      ),
+      messages: {
+        ...state.messages,
+        [conversationId]: (state.messages[conversationId] ?? []).map((m) =>
+          m.id === messageId ? { ...m, isStreaming } : m
+        ),
+      },
+    }));
+  },
+
+  updateMessageSources: (conversationId: string, messageId: string, sources: Message['sources']) => {
+    set((state) => ({
+      messages: {
+        ...state.messages,
+        [conversationId]: (state.messages[conversationId] ?? []).map((m) =>
+          m.id === messageId ? { ...m, sources } : m
+        ),
+      },
+    }));
+  },
+
+  updateMessageCompletionTime: (conversationId: string, messageId: string, time: number) => {
+    set((state) => ({
+      messages: {
+        ...state.messages,
+        [conversationId]: (state.messages[conversationId] ?? []).map((m) =>
+          m.id === messageId ? { ...m, completionTime: time } : m
+        ),
+      },
     }));
   },
 
@@ -82,14 +118,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ activeConversationId: id });
   },
 
-  getActiveConversation: () => {
-    const state = get();
-    return state.conversations.find(
-      (c) => c.id === state.activeConversationId,
-    );
+  setIsGenerating: (generating: boolean) => {
+    set({ isGenerating: generating });
   },
 
-  setLoading: (loading: boolean) => {
-    set({ isLoading: loading });
+  deleteConversation: (id: string) => {
+    set((state) => {
+      const newMessages = { ...state.messages };
+      delete newMessages[id];
+      return {
+        conversations: state.conversations.filter((c) => c.id !== id),
+        messages: newMessages,
+        activeConversationId:
+          state.activeConversationId === id ? null : state.activeConversationId,
+      };
+    });
   },
 }));

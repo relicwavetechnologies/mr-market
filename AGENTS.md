@@ -164,7 +164,7 @@ This is a **Python + TypeScript monorepo** with `uv` workspaces (Python) and Vit
 | Scraping | BeautifulSoup, nselib, jugaad-data, yfinance |
 | Monitoring | Sentry |
 | Package manager (Python) | **uv** — never use pip or poetry directly |
-| Package manager (JS) | **npm** |
+| Package manager (JS) | **pnpm** for `apps/web` — never use npm there |
 | Containerization | Docker + Docker Compose |
 
 ---
@@ -181,10 +181,10 @@ uv run ruff format app/                                              # format
 
 ### Frontend (`/apps/web`)
 ```bash
-npm run dev          # Vite dev server
-npm run build        # production build
-npm run typecheck    # tsc --noEmit
-npm run lint         # ESLint
+pnpm run dev          # Vite dev server
+pnpm run build        # production build
+pnpm run typecheck    # tsc --noEmit
+pnpm run lint         # typecheck/lint gate
 ```
 
 ### Workers (`/workers`)

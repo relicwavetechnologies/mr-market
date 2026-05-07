@@ -1,80 +1,58 @@
-import type { Message } from "@/types";
-import { Bot, User } from "lucide-react";
+import { Check, Loader2 } from 'lucide-react';
+import type { Message } from '@/types';
+import { Disclaimer } from '@/components/common/Disclaimer';
+import { parseMarkdown } from '@/utils/parseMarkdown';
 
-interface Props {
+interface MessageBubbleProps {
   message: Message;
 }
 
-/**
- * Renders a single chat message as a bubble.
- * Handles basic markdown-like formatting for code blocks and bold text.
- */
-export function MessageBubble({ message }: Props) {
-  const isUser = message.role === "user";
+export function MessageBubble({ message }: MessageBubbleProps) {
+  if (message.role === 'user') {
+    return <UserMessage content={message.content} />;
+  }
+  return <AssistantMessage message={message} />;
+}
 
+function UserMessage({ content }: { content: string }) {
   return (
-    <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
-      {!isUser && (
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-900/50">
-          <Bot className="h-4 w-4 text-emerald-400" />
-        </div>
-      )}
-
-      <div
-        className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-          isUser
-            ? "bg-emerald-600 text-white"
-            : "bg-gray-800 text-gray-200"
-        }`}
-      >
-        <MessageContent content={message.content} />
-      </div>
-
-      {isUser && (
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-700">
-          <User className="h-4 w-4 text-gray-300" />
-        </div>
-      )}
+    <div className="animate-fade-in">
+      <h2 className="font-serif text-3xl font-normal leading-snug tracking-tight text-foreground sm:text-[34px]">
+        {content}
+      </h2>
     </div>
   );
 }
 
-/** Renders message content with basic formatting for code blocks. */
-function MessageContent({ content }: { content: string }) {
-  if (!content) {
-    return <span className="text-gray-500 italic">...</span>;
-  }
-
-  // Split on code blocks (```...```)
-  const parts = content.split(/(```[\s\S]*?```)/g);
+function AssistantMessage({ message }: { message: Message }) {
+  const { content, sources = [], isStreaming } = message;
 
   return (
-    <>
-      {parts.map((part, i) => {
-        if (part.startsWith("```") && part.endsWith("```")) {
-          const code = part.slice(3, -3).replace(/^\w+\n/, ""); // strip language hint
-          return (
-            <pre
-              key={i}
-              className="my-2 overflow-x-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-300"
-            >
-              <code>{code}</code>
-            </pre>
-          );
-        }
-        // Render bold (**text**)
-        const formatted = part.split(/(\*\*[^*]+\*\*)/g).map((seg, j) => {
-          if (seg.startsWith("**") && seg.endsWith("**")) {
-            return (
-              <strong key={j} className="font-semibold text-white">
-                {seg.slice(2, -2)}
-              </strong>
-            );
-          }
-          return <span key={j}>{seg}</span>;
-        });
-        return <span key={i}>{formatted}</span>;
-      })}
-    </>
+    <div className="animate-fade-in space-y-5">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        {isStreaming && content.length === 0 ? (
+          <>
+            <Loader2 className="size-3.5 animate-spin text-foreground/70" />
+            <span>Fetching latest data…</span>
+          </>
+        ) : (
+          <>
+            <span className="flex size-4 items-center justify-center rounded-full bg-accent">
+              <Check className="size-2.5 text-foreground/80" />
+            </span>
+            <span>Fetched data from {sources.length || 4} sources</span>
+          </>
+        )}
+      </div>
+
+      <div className="answer-copy">
+        {parseMarkdown(content, sources)}
+        {isStreaming && content.length > 0 && (
+          <span className="cursor-blink ml-0.5 text-accent-blue">▍</span>
+        )}
+      </div>
+
+      {!isStreaming && content.length > 0 && <Disclaimer />}
+    </div>
   );
 }
