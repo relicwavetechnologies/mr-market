@@ -300,9 +300,11 @@ async def _get_research_payload(
     query: str,
     top_k: int,
 ) -> dict[str, Any]:
-    """Embed the query, run the cosine search, return the top-K chunks."""
+    """Embed the query, run similarity search via the configured backend,
+    return the top-K chunks."""
     from app.rag.embeddings import embed_one
-    from app.rag.retrieval import search, to_dict
+    from app.rag.retrieval import to_dict
+    from app.rag.vector_store import get_store
 
     sym = ticker.upper().strip()
     try:
@@ -310,8 +312,10 @@ async def _get_research_payload(
     except Exception as e:  # noqa: BLE001
         return {"ticker": sym, "available": False, "error": f"embed: {e!s}"}
 
-    hits = await search(
-        session, ticker=sym, query_embedding=q_emb, top_k=max(1, min(top_k, 20))
+    store = get_store()
+    hits = await store.search(
+        session, ticker=sym, query_embedding=q_emb,
+        top_k=max(1, min(top_k, 20)), kinds=None,
     )
     if not hits:
         return {

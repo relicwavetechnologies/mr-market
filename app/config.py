@@ -29,6 +29,18 @@ class Settings(BaseSettings):
     # overridden). Set GUARDRAIL_MODE=strict to revert to Phase-1 behaviour.
     guardrail_mode: str = "warn"
 
+    # Vector-store backend for RAG retrieval.
+    #   "jsonb"    — Postgres JSONB column + numpy cosine (always available).
+    #   "pinecone" — Pinecone managed cloud (requires PINECONE_API_KEY).
+    # Auto-falls-back to "jsonb" if backend="pinecone" but the API key is
+    # missing — never silently fails a query.
+    vector_backend: str = "jsonb"
+    pinecone_api_key: str = ""
+    pinecone_index_name: str = "mr-market"
+    # Pinecone serverless region; only used at index creation time.
+    pinecone_cloud: str = "aws"
+    pinecone_region: str = "us-east-1"
+
     # Reserved for later swap (Anthropic / Gemini).
     anthropic_api_key: str = ""
     gemini_api_key: str = ""

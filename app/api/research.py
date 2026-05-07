@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.document import Document
 from app.db.session import get_session
 from app.rag.embeddings import embed_one
-from app.rag.retrieval import search, to_dict
+from app.rag.retrieval import to_dict
+from app.rag.vector_store import get_store
 
 router = APIRouter(tags=["research"])
 
@@ -54,11 +55,15 @@ async def research(
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=503, detail=f"embedding failed: {e}") from e
 
-    hits = await search(session, ticker=sym, query_embedding=query_embedding, top_k=top_k)
+    store = get_store()
+    hits = await store.search(
+        session, ticker=sym, query_embedding=query_embedding, top_k=top_k, kinds=None
+    )
     return {
         "ticker": sym,
         "query": q,
         "top_k": top_k,
+        "backend": store.name,
         "as_of": datetime.now(timezone.utc).isoformat(),
         "n_hits": len(hits),
         "hits": [to_dict(h) for h in hits],
