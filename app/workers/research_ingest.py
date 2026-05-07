@@ -25,6 +25,7 @@ from app.db.models.document import Document, DocumentChunk
 from app.db.models.scrape_log import ScrapeLog
 from app.rag.chunking import chunk_pages, extract_pages
 from app.rag.embeddings import EMBEDDING_MODEL, embed_batch
+from app.rag.vector_store import get_store
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +155,35 @@ async def ingest_pdf(
         )
 
     await session.commit()
+
+    # Replicate to the configured vector store. JSONB backend's upsert is a
+    # no-op since we already wrote the column above; Pinecone backend pushes
+    # the embeddings to its serverless index.
+    try:
+        store = get_store()
+        upsert_payload = [
+            (
+                c.chunk_idx,
+                list(vec),
+                {
+                    "kind": kind,
+                    "fy": fy,
+                    "page": c.page,
+                    "document_title": title,
+                },
+            )
+            for c, vec in zip(chunks, embeddings, strict=True)
+        ]
+        n_pushed = await store.upsert(
+            document_id=document_id, chunks=upsert_payload, ticker=sym
+        )
+        logger.info(
+            "vector_store=%s pushed %d / %d chunks for %s",
+            store.name, n_pushed, len(chunks), sym,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("vector_store upsert failed (non-fatal): %s", e)
+
     stats.duration_ms = int((time.perf_counter() - started) * 1000)
     await _audit(session, stats, ok=True)
     return stats

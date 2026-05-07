@@ -19,6 +19,7 @@ dependencies = [
     "openai>=2.35.1",
     "pandas>=3.0.2",
     "pandas-ta-classic>=0.5.44",
+    "pinecone>=9.0.0",
     "pydantic>=2",
     "pydantic-settings>=2.14.0",
     "pypdf>=6.10.2",
