@@ -459,6 +459,7 @@ async def dispatch(
             name=args.get("name"),
             expr=args.get("expr"),
             limit=int(args.get("limit") or 10),
+            risk_profile=args.get("_risk_profile"),
         )
     if name == "analyse_portfolio":
         return await _analyse_portfolio_payload(
@@ -817,12 +818,20 @@ async def _get_technicals_payload(
     }
 
 
+RISK_PROFILE_SCREENER_GUARDS: dict[str, str] = {
+    "conservative": "promoter_pct > 50 AND pe_trailing < 25",
+    "balanced": "",
+    "aggressive": "",
+}
+
+
 async def _run_screener_payload(
     session: AsyncSession,
     *,
     name: str | None,
     expr: str | None,
     limit: int,
+    risk_profile: str | None = None,
 ) -> dict[str, Any]:
     """Run a screener by name or expression. Calls Dev A's screener engine."""
     if not name and not expr:
@@ -835,11 +844,13 @@ async def _run_screener_payload(
             if saved is None:
                 return {"available": False, "error": f"no saved screener named '{name}'"}
             expr = saved.expr
+        expr = _apply_risk_guard(expr, risk_profile)
         results = await evaluate_expression(session, expr, limit=limit)
         return {
             "available": True,
             "expr": expr,
             "screener_name": name,
+            "risk_profile_applied": risk_profile,
             "tickers": results.tickers,
             "universe_size": results.universe_size,
             "exec_ms": results.exec_ms,
@@ -851,6 +862,16 @@ async def _run_screener_payload(
         }
     except Exception as e:  # noqa: BLE001
         return {"available": False, "error": f"screener error: {e!s}"}
+
+
+def _apply_risk_guard(expr: str, risk_profile: str | None) -> str:
+    """Append profile-specific safety filters to a screener expression."""
+    if not risk_profile or not expr:
+        return expr or ""
+    guard = RISK_PROFILE_SCREENER_GUARDS.get(risk_profile, "")
+    if not guard:
+        return expr
+    return f"({expr}) AND {guard}"
 
 
 async def _analyse_portfolio_payload(

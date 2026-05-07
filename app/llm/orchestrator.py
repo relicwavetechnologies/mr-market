@@ -268,12 +268,16 @@ def _tool_specs_for_turn(*, memory_available: bool) -> list[dict[str, Any]]:
     ]
 
 
+RISK_PROFILE_TOOLS = frozenset({"run_screener", "propose_ideas"})
+
+
 async def run_chat(
     user_message: str,
     *,
     session: AsyncSession,
     redis: aioredis.Redis,
     user_id: str | None = None,
+    risk_profile: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     settings = get_settings()
     auth: AuthState = await load_state(redis)
@@ -544,9 +548,10 @@ async def run_chat(
         # to max(latencies).
         async def _run_one(name: str, args: dict[str, Any]) -> tuple[dict[str, Any], int]:
             t0 = time.perf_counter()
+            effective_args = _inject_risk_profile(name, args, risk_profile)
             try:
                 result = await dispatch(
-                    name, args, session=session, redis=redis, user_id=user_id
+                    name, effective_args, session=session, redis=redis, user_id=user_id
                 )
             except Exception as e:  # noqa: BLE001
                 result = {"error": str(e)}
@@ -633,6 +638,23 @@ async def run_chat(
         "tool_results": tool_results,
         "blocked": guarded.overridden,
     }
+
+
+def _inject_risk_profile(
+    tool_name: str, args: dict[str, Any], risk_profile: str | None
+) -> dict[str, Any]:
+    """Server-side injection of risk_profile into tool inputs.
+
+    The model never sees the user's profile in its system prompt — this keeps
+    the model honest. Instead, we silently add/override the risk_profile arg
+    for tools that are profile-aware (run_screener, propose_ideas).
+    """
+    if risk_profile is None or tool_name not in RISK_PROFILE_TOOLS:
+        return args
+    injected = {**args, "_risk_profile": risk_profile}
+    if tool_name == "propose_ideas" and "risk_profile" not in args:
+        injected["risk_profile"] = risk_profile
+    return injected
 
 
 def _safe_json(s: str) -> dict[str, Any]:

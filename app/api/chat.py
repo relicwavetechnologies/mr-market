@@ -102,6 +102,7 @@ async def chat(
                 session=session,
                 redis=redis,
                 user_id=str(current_user.id) if current_user is not None else None,
+                risk_profile=getattr(current_user, "risk_profile", None) if current_user is not None else None,
             ):
                 t = ev.get("type")
                 if t == "memory":

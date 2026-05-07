@@ -18,10 +18,14 @@ from app.security.tokens import TokenDecodeError, decode, issue_access, issue_re
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 
+VALID_RISK_PROFILES = {"conservative", "balanced", "aggressive"}
+
+
 class UserOut(BaseModel):
     id: str
     email: str
     display_name: str
+    risk_profile: str = "balanced"
     created_at: datetime
     last_login_at: datetime | None = None
 
@@ -31,6 +35,7 @@ class UserOut(BaseModel):
             id=str(user.id),
             email=user.email,
             display_name=user.display_name,
+            risk_profile=user.risk_profile or "balanced",
             created_at=user.created_at,
             last_login_at=user.last_login_at,
         )
@@ -114,6 +119,37 @@ async def refresh(payload: RefreshPayload, session: AsyncSession = Depends(get_s
 @router.get("/me", response_model=UserOut)
 async def me(current_user: User = Depends(get_current_user)) -> UserOut:
     return UserOut.from_model(current_user)
+
+
+class RiskProfileOut(BaseModel):
+    risk_profile: str
+
+
+class RiskProfilePayload(BaseModel):
+    risk_profile: str = Field(..., description="One of: conservative, balanced, aggressive")
+
+
+@router.get("/me/risk-profile", response_model=RiskProfileOut)
+async def get_risk_profile(current_user: User = Depends(get_current_user)) -> RiskProfileOut:
+    return RiskProfileOut(risk_profile=current_user.risk_profile or "balanced")
+
+
+@router.put("/me/risk-profile", response_model=RiskProfileOut)
+async def set_risk_profile(
+    payload: RiskProfilePayload,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> RiskProfileOut:
+    value = payload.risk_profile.lower().strip()
+    if value not in VALID_RISK_PROFILES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"risk_profile must be one of: {', '.join(sorted(VALID_RISK_PROFILES))}",
+        )
+    current_user.risk_profile = value
+    await session.commit()
+    await session.refresh(current_user)
+    return RiskProfileOut(risk_profile=current_user.risk_profile)
 
 
 @router.post("/logout")
