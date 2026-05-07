@@ -22,6 +22,7 @@ wheels/
 
 # Local context (used by wiki-sync)
 .context/
+.claude/
 
 # Editor
 .vscode/

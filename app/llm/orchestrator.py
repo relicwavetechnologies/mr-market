@@ -70,13 +70,21 @@ def _summarise(name: str, payload: dict[str, Any]) -> dict[str, Any]:
         }
     if name == "get_technicals":
         latest = payload.get("latest") or {}
+        summary = payload.get("summary") or {}
         return {
             "ticker": payload.get("ticker"),
-            "available": (payload.get("summary") or {}).get("available"),
+            "available": summary.get("available"),
+            "as_of": payload.get("as_of"),
+            "close": latest.get("close"),
             "rsi_14": latest.get("rsi_14"),
-            "rsi_zone": (payload.get("summary") or {}).get("rsi_zone"),
-            "above_sma50": (payload.get("summary") or {}).get("above_sma50"),
-            "above_sma200": (payload.get("summary") or {}).get("above_sma200"),
+            "rsi_zone": summary.get("rsi_zone"),
+            "macd": latest.get("macd"),
+            "macd_signal": latest.get("macd_signal"),
+            "macd_above_signal": summary.get("macd_above_signal"),
+            "sma_50": latest.get("sma_50"),
+            "sma_200": latest.get("sma_200"),
+            "above_sma50": summary.get("above_sma50"),
+            "above_sma200": summary.get("above_sma200"),
             "atr_14": latest.get("atr_14"),
         }
     if name == "get_levels":
@@ -96,8 +104,10 @@ def _summarise(name: str, payload: dict[str, Any]) -> dict[str, Any]:
             "latest_quarter": payload.get("latest_quarter_label"),
             "promoter_pct": latest.get("promoter_pct"),
             "public_pct": latest.get("public_pct"),
+            "employee_trust_pct": latest.get("employee_trust_pct"),
             "pledged_pct": latest.get("pledged_pct") or pledge.get("pledged_pct"),
             "pledge_risk_band": latest.get("pledge_risk_band") or pledge.get("risk_band"),
+            "xbrl_url": payload.get("xbrl_url"),
             "n_quarters": len(payload.get("series") or []),
         }
     if name == "get_deals":
@@ -112,12 +122,29 @@ def _summarise(name: str, payload: dict[str, Any]) -> dict[str, Any]:
         }
     if name == "get_research":
         hits = payload.get("hits") or []
+        # Top-3 citations for the UI card. Each is small (no chunk text) so
+        # the SSE summary stays compact.
+        top_hits = [
+            {
+                "document_title": h.get("document_title"),
+                "document_fy": h.get("document_fy"),
+                "page": h.get("page"),
+                "score": h.get("score"),
+            }
+            for h in hits[:3]
+        ]
+        # De-duplicated (title, fy) pairs across all hits, for the
+        # "documents consulted" footer line.
+        documents = sorted(
+            {(h.get("document_title"), h.get("document_fy")) for h in hits}
+        )
         return {
             "ticker": payload.get("ticker"),
             "available": payload.get("available"),
             "n_hits": payload.get("n_hits"),
             "top_score": (max((h.get("score") or 0) for h in hits) if hits else None),
-            "documents": sorted({(h.get("document_title"), h.get("document_fy")) for h in hits}),
+            "top_hits": top_hits,
+            "documents": documents,
         }
     return {"raw_keys": list(payload.keys())}
 
