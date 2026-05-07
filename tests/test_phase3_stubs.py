@@ -25,10 +25,13 @@ client = TestClient(app)
 
 
 class TestScreenerStubs:
-    def test_run_with_expr_returns_locked_shape(self):
+    def test_run_with_name_returns_locked_shape(self):
+        # Switched to the `name` path because `expr` is now wired to the
+        # real engine in P3-A2 and would hit Postgres. The shape contract
+        # is identical between stub and real, so this still pins it.
         r = client.post(
             "/screener/run",
-            json={"expr": "rsi_14 < 30 AND pe_trailing < 20", "limit": 5},
+            json={"name": "value_rebound", "limit": 5},
         )
         assert r.status_code == 200, r.text
         data = r.json()
@@ -43,6 +46,9 @@ class TestScreenerStubs:
             assert isinstance(t["hits"], dict)
 
     def test_run_with_name_returns_payload(self):
+        # Note: `name` path stays stubbed until P3-A3 ships the
+        # stored-screeners table. `expr` path is real (tested in
+        # tests/test_screener_db.py against a live Postgres).
         r = client.post("/screener/run", json={"name": "value_rebound"})
         assert r.status_code == 200, r.text
         assert r.json()["matched"] >= 1
@@ -58,7 +64,10 @@ class TestScreenerStubs:
         assert r.status_code == 400
 
     def test_run_respects_limit(self):
-        r = client.post("/screener/run", json={"expr": "rsi_14 < 30", "limit": 1})
+        # Use the still-stubbed `name` path so this test stays
+        # DB-independent. The expr-path's limit is exercised in
+        # tests/test_screener_db.py.
+        r = client.post("/screener/run", json={"name": "oversold_quality", "limit": 1})
         assert r.status_code == 200
         assert len(r.json()["tickers"]) == 1
         assert r.json()["matched"] == 1
