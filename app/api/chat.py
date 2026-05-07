@@ -53,6 +53,7 @@ async def chat(
         final_message = ""
         blocked = False
         error_message: str | None = None
+        guardrail_meta: dict[str, Any] | None = None
 
         try:
             async for ev in run_chat(payload.message, session=session, redis=redis):
@@ -67,6 +68,8 @@ async def chat(
                     }
                 elif t == "tool_result":
                     tool_results.setdefault(ev["name"], []).append(ev.get("summary"))
+                elif t == "guardrail":
+                    guardrail_meta = {k: v for k, v in ev.items() if k != "type"}
                 elif t == "done":
                     final_message = ev.get("message", "") or ""
                     blocked = bool(ev.get("blocked", False))
@@ -82,6 +85,18 @@ async def chat(
         # ---- Audit log (write outside the stream loop) -----------------------
         try:
             duration_ms = int((time.perf_counter() - started) * 1000)
+            flagged_payload: dict[str, Any] = {}
+            if error_message:
+                flagged_payload["error"] = error_message
+            if guardrail_meta:
+                # Only include non-empty guardrail signals to keep the row tidy.
+                gr_min = {
+                    k: v
+                    for k, v in guardrail_meta.items()
+                    if (isinstance(v, (list, dict)) and v) or (isinstance(v, bool) and v)
+                }
+                if gr_min:
+                    flagged_payload["guardrail"] = gr_min
             session.add(
                 ChatAudit(
                     user_id=payload.user_id,
@@ -94,7 +109,7 @@ async def chat(
                     model=settings.openai_model_work,
                     output=final_message or error_message,
                     blocked=blocked,
-                    flagged={"error": error_message} if error_message else None,
+                    flagged=flagged_payload or None,
                     latency_ms=duration_ms,
                 )
             )

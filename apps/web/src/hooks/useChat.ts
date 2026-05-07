@@ -86,9 +86,8 @@ export function useChat() {
               }
             }
           },
-          () => {
+          (final) => {
             setLoading(false);
-            // Mark streaming as complete
             const store = useChatStore.getState();
             const conv = store.conversations.find((c) => c.id === convId);
             if (conv) {
@@ -97,6 +96,22 @@ export function useChat() {
               );
               if (msg) {
                 msg.isStreaming = false;
+                if (final?.guardrail) {
+                  msg.guardrail = final.guardrail;
+                }
+                // If guardrails overrode the answer, swap in the canonical text
+                // so the streamed output the user saw is replaced.
+                if (final?.message && final.blocked) {
+                  msg.content = final.message;
+                  updateMessage(convId, assistantMessageId, final.message);
+                } else if (
+                  final?.message &&
+                  final.message !== streamBufferRef.current
+                ) {
+                  // disclaimer auto-injection added a trailing line
+                  msg.content = final.message;
+                  updateMessage(convId, assistantMessageId, final.message);
+                }
               }
             }
           },
