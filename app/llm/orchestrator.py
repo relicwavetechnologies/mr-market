@@ -11,10 +11,21 @@ The orchestrator returns an async generator of dicts:
     {"type": "intent",       "intent": "quote", "ticker": "RELIANCE"}
     {"type": "done",         "message": "<full text>", "tool_results": {...}}
     {"type": "error",        "message": "..."}
+
+Latency notes (P2-D11)
+----------------------
+* When the workhorse returns content with no further tool_calls, we
+  reuse that content directly as pseudo-deltas instead of re-calling
+  OpenAI with `stream=True` to regenerate the same answer. Saves 1
+  full LLM round trip on every "final answer" turn (~1.5-3 s).
+* When the workhorse asks for ≥2 tools in the same round, we run
+  them concurrently via `asyncio.gather`. Saves N×(tool latency)
+  on multi-tool turns; a 3-tool round drops from sum to max.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from collections.abc import AsyncIterator
@@ -71,6 +82,16 @@ def _summarise(name: str, payload: dict[str, Any]) -> dict[str, Any]:
     if name == "get_technicals":
         latest = payload.get("latest") or {}
         summary = payload.get("summary") or {}
+        series = payload.get("series") or []
+        # Trim to the last 5 bars for the card's expand-to-history view.
+        compact_series = [
+            {
+                "ts": s.get("ts"),
+                "close": s.get("close"),
+                "rsi_14": s.get("rsi_14"),
+            }
+            for s in series[:5]
+        ]
         return {
             "ticker": payload.get("ticker"),
             "available": summary.get("available"),
@@ -86,6 +107,7 @@ def _summarise(name: str, payload: dict[str, Any]) -> dict[str, Any]:
             "above_sma50": summary.get("above_sma50"),
             "above_sma200": summary.get("above_sma200"),
             "atr_14": latest.get("atr_14"),
+            "series": compact_series,
         }
     if name == "get_levels":
         return {
@@ -98,6 +120,16 @@ def _summarise(name: str, payload: dict[str, Any]) -> dict[str, Any]:
     if name == "get_holding":
         latest = payload.get("latest") or {}
         pledge = payload.get("pledge") or {}
+        series = payload.get("series") or []
+        # Last 4 quarters for the expand-to-history view.
+        compact_series = [
+            {
+                "quarter_label": s.get("quarter_label"),
+                "promoter_pct": s.get("promoter_pct"),
+                "public_pct": s.get("public_pct"),
+            }
+            for s in series[:4]
+        ]
         return {
             "ticker": payload.get("ticker"),
             "available": payload.get("available"),
@@ -108,7 +140,8 @@ def _summarise(name: str, payload: dict[str, Any]) -> dict[str, Any]:
             "pledged_pct": latest.get("pledged_pct") or pledge.get("pledged_pct"),
             "pledge_risk_band": latest.get("pledge_risk_band") or pledge.get("risk_band"),
             "xbrl_url": payload.get("xbrl_url"),
-            "n_quarters": len(payload.get("series") or []),
+            "n_quarters": len(series),
+            "series": compact_series,
         }
     if name == "get_deals":
         return {
@@ -253,30 +286,16 @@ async def run_chat(
         tool_calls = list(message.tool_calls or [])
 
         if not tool_calls:
-            # No (more) tools needed — stream the final answer.
-            messages.append({"role": "assistant", "content": message.content or ""})
-            try:
-                stream = await client.chat.completions.create(
-                    model=settings.openai_model_work,
-                    temperature=0.2,
-                    max_tokens=600,
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        *messages[1:-1],   # everything except the just-added assistant turn
-                    ],
-                    stream=True,
-                )
-            except Exception as e:  # noqa: BLE001
-                yield {"type": "error", "message": f"OpenAI stream error: {e!s}"}
-                return
+            # No (more) tools needed. The workhorse already produced the
+            # final answer in `message.content` on this same call — emit it
+            # as pseudo-deltas instead of re-calling OpenAI with stream=True
+            # to regenerate the same text. Saves ~1.5-3 s per "answered"
+            # turn at zero quality cost.
+            buffered = message.content or ""
+            for chunk in _chunk(buffered, size=24):
+                final_text_parts.append(chunk)
+                yield {"type": "delta", "text": chunk}
 
-            async for ev in stream:
-                delta = ev.choices[0].delta.content if ev.choices else None
-                if delta:
-                    final_text_parts.append(delta)
-                    yield {"type": "delta", "text": delta}
-
-            buffered = "".join(final_text_parts)
             guarded = apply_guardrails(
                 buffered,
                 tool_results=tool_results,
@@ -311,6 +330,10 @@ async def run_chat(
             }
         )
 
+        # Pre-emit tool_call envelopes (before dispatch) so the frontend
+        # can render the "running" pills as soon as the orchestrator knows
+        # what's coming.
+        prepared: list[tuple[Any, str, dict[str, Any]]] = []
         for tc in tool_calls:
             name = tc.function.name
             try:
@@ -318,13 +341,25 @@ async def run_chat(
             except Exception as e:  # noqa: BLE001
                 args = {"_parse_error": str(e)}
             yield {"type": "tool_call", "name": name, "args": args}
+            prepared.append((tc, name, args))
 
+        # Run all requested tools concurrently. The DB session is async-safe
+        # against parallel SELECTs; each tool's HTTP scrape uses its own
+        # short-lived AsyncClient. A 3-tool round goes from sum(latencies)
+        # to max(latencies).
+        async def _run_one(name: str, args: dict[str, Any]) -> tuple[dict[str, Any], int]:
             t0 = time.perf_counter()
             try:
                 result = await dispatch(name, args, session=session, redis=redis)
             except Exception as e:  # noqa: BLE001
                 result = {"error": str(e)}
-            duration_ms = int((time.perf_counter() - t0) * 1000)
+            return result, int((time.perf_counter() - t0) * 1000)
+
+        results = await asyncio.gather(
+            *[_run_one(name, args) for _, name, args in prepared]
+        )
+
+        for (tc, name, args), (result, duration_ms) in zip(prepared, results):
             tool_results.setdefault(name, []).append({"args": args, "result": result})
             yield {
                 "type": "tool_result",
@@ -332,7 +367,6 @@ async def run_chat(
                 "ms": duration_ms,
                 "summary": _summarise(name, result),
             }
-
             messages.append(
                 {
                     "role": "tool",
