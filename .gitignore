@@ -36,3 +36,5 @@ frontend/.vite/
 
 # Logs
 *.log
+
+*.tsbuildinfo

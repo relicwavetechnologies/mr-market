@@ -1,4 +1,5 @@
 import { ChatContainer } from "@/components/chat/ChatContainer";
+import { AuthBanner } from "@/components/common/AuthBanner";
 import { Disclaimer } from "@/components/common/Disclaimer";
 import { TrendingUp } from "lucide-react";
 
@@ -13,6 +14,11 @@ export function ChatPage() {
           AI Assistant
         </span>
       </header>
+
+      {/* Auth status banner */}
+      <div className="border-b border-gray-800 px-6 py-2">
+        <AuthBanner />
+      </div>
 
       {/* Main chat area */}
       <main className="flex min-h-0 flex-1">
