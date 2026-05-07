@@ -188,13 +188,19 @@ def evaluate(q: dict[str, Any], r: RunResult) -> list[Assertion]:
 
     if "disclaimer" in q:
         if q["disclaimer"]:
-            out.append(
-                Assertion(
-                    "disclaimer_injected",
-                    r.disclaimer_injected
-                    or "factual" in r.final_message.lower(),
-                )
+            # Accept either:
+            #  - the Phase-1 guardrail-injected "factual" disclaimer, OR
+            #  - the Phase-2 internal-tool framing emitted by the model itself
+            #    ("AI analyst view — internal use only, not investment advice").
+            text_low = r.final_message.lower()
+            disclaimer_present = (
+                r.disclaimer_injected
+                or "factual" in text_low
+                or "ai analyst view" in text_low
+                or "not investment advice" in text_low
+                or "internal use only" in text_low
             )
+            out.append(Assertion("disclaimer_injected", disclaimer_present))
 
     return out
 

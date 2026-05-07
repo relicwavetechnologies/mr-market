@@ -30,6 +30,7 @@ from app.llm.auth import AuthState, load_state
 from app.llm.guardrails import apply_guardrails
 from app.llm.intent import classify
 from app.llm.prompts import SYSTEM_PROMPT
+from app.llm.tool_routing import filter_tool_specs
 from app.llm.tools import TOOL_SPECS, dispatch, tool_result_to_json_string
 
 logger = logging.getLogger(__name__)
@@ -88,12 +89,15 @@ def _summarise(name: str, payload: dict[str, Any]) -> dict[str, Any]:
         }
     if name == "get_holding":
         latest = payload.get("latest") or {}
+        pledge = payload.get("pledge") or {}
         return {
             "ticker": payload.get("ticker"),
             "available": payload.get("available"),
             "latest_quarter": payload.get("latest_quarter_label"),
             "promoter_pct": latest.get("promoter_pct"),
             "public_pct": latest.get("public_pct"),
+            "pledged_pct": latest.get("pledged_pct") or pledge.get("pledged_pct"),
+            "pledge_risk_band": latest.get("pledge_risk_band") or pledge.get("risk_band"),
             "n_quarters": len(payload.get("series") or []),
         }
     if name == "get_deals":
@@ -190,6 +194,12 @@ async def run_chat(
         {"role": "user", "content": user_message},
     ]
 
+    # Narrow the tool catalog based on the router's intent — fewer tools
+    # surfaced to the workhorse means fewer over-fires per turn (D8).
+    active_tools = filter_tool_specs(
+        TOOL_SPECS, intent=intent_info.get("intent")
+    )
+
     final_text_parts: list[str] = []
     tool_results: dict[str, dict[str, Any]] = {}
 
@@ -203,7 +213,7 @@ async def run_chat(
                 model=settings.openai_model_work,
                 temperature=0.2,
                 max_tokens=600,
-                tools=TOOL_SPECS,
+                tools=active_tools,
                 tool_choice="auto",
                 messages=messages,
             )
