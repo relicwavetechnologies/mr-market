@@ -16,11 +16,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import pandas as pd
 from sqlalchemy import desc, select
 
+from datetime import date, timedelta
+
 from app.analytics.levels import compute_levels
 from app.data.info_service import get_info
 from app.data.news_service import get_news_for_ticker
 from app.data.quote_service import get_quote
 from app.data.sources.nse_shareholding import quarter_label
+from app.db.models.deal import Deal
 from app.db.models.holding import Holding
 from app.db.models.price import PriceDaily
 from app.db.models.technicals import Technicals
@@ -162,6 +165,39 @@ TOOL_SPECS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "get_deals",
+            "description": (
+                "Get bulk and block deals for an Indian stock — large single "
+                "transactions reported by NSE (bulk: ≥0.5%% of equity; block: "
+                "negotiated cross-trades ≥₹10cr). Returns recent deals with "
+                "client name, side (BUY/SELL), quantity, price, and a summary "
+                "of net activity (buys vs sells). Useful for 'who is buying/"
+                "selling' questions and tracking institutional flows. Pure "
+                "factual data, no recommendations."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticker": {"type": "string", "description": "NSE ticker symbol"},
+                    "kind": {
+                        "type": "string",
+                        "enum": ["bulk", "block", "any"],
+                        "description": "deal type filter (default any)",
+                    },
+                    "days": {
+                        "type": "integer",
+                        "description": "Lookback window (default 90, max 365).",
+                        "minimum": 1,
+                        "maximum": 365,
+                    },
+                },
+                "required": ["ticker"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_company_info",
             "description": (
                 "Get fundamental info about an Indian stock: sector, industry, market "
@@ -207,7 +243,63 @@ async def dispatch(
         return await _get_holding_payload(
             session, str(args["ticker"]), quarters=int(args.get("quarters") or 8)
         )
+    if name == "get_deals":
+        return await _get_deals_payload(
+            session,
+            str(args["ticker"]),
+            kind=str(args.get("kind") or "any"),
+            days=int(args.get("days") or 90),
+        )
     return {"error": f"unknown tool: {name}"}
+
+
+async def _get_deals_payload(
+    session: AsyncSession, ticker: str, *, kind: str, days: int
+) -> dict[str, Any]:
+    sym = ticker.upper().strip()
+    cutoff = date.today() - timedelta(days=max(1, min(days, 365)))
+    stmt = (
+        select(Deal)
+        .where(Deal.symbol == sym)
+        .where(Deal.trade_date >= cutoff)
+        .order_by(desc(Deal.trade_date), desc(Deal.id))
+        .limit(50)
+    )
+    if kind in ("bulk", "block"):
+        stmt = stmt.where(Deal.kind == kind)
+    rows = (await session.execute(stmt)).scalars().all()
+
+    if not rows:
+        return {"ticker": sym, "available": False, "n_deals": 0, "kind": kind, "lookback_days": days}
+
+    from decimal import Decimal as D
+    buy_qty = sum(r.quantity for r in rows if r.side == "BUY")
+    sell_qty = sum(r.quantity for r in rows if r.side == "SELL")
+    items = [
+        {
+            "trade_date": r.trade_date.isoformat(),
+            "client_name": r.client_name,
+            "side": r.side,
+            "quantity": r.quantity,
+            "avg_price": str(r.avg_price),
+            "trade_value_inr": str((r.avg_price * r.quantity).quantize(D("0.01"))),
+            "kind": r.kind,
+        }
+        for r in rows
+    ]
+    return {
+        "ticker": sym,
+        "available": True,
+        "kind": kind,
+        "lookback_days": days,
+        "n_deals": len(items),
+        "n_buys": sum(1 for r in rows if r.side == "BUY"),
+        "n_sells": sum(1 for r in rows if r.side == "SELL"),
+        "buy_qty": buy_qty,
+        "sell_qty": sell_qty,
+        "net_qty": buy_qty - sell_qty,
+        "items": items,
+    }
 
 
 async def _get_holding_payload(
