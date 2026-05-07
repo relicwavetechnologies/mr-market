@@ -236,6 +236,35 @@ def collect_truth_set(tool_results: dict[str, Any] | list[Any] | None) -> set[De
     return found
 
 
+def collect_idea_truth(tool_results: dict[str, Any]) -> set[Decimal]:
+    """Extract entry/sl/target numbers from propose_ideas results so the
+    numeric verifier can match them against the LLM's answer."""
+    found: set[Decimal] = set()
+    ideas_results = tool_results.get("propose_ideas") or []
+    for entry in ideas_results:
+        result = entry.get("result") if isinstance(entry, dict) else entry
+        if not isinstance(result, dict):
+            continue
+        for idea in result.get("ideas") or []:
+            if not isinstance(idea, dict):
+                continue
+            for key in ("entry", "sl", "target", "rr_ratio", "score"):
+                val = idea.get(key)
+                if val is not None:
+                    try:
+                        found.add(Decimal(str(val)))
+                    except (InvalidOperation, ValueError):
+                        pass
+            snap = idea.get("technicals_snapshot") or {}
+            for val in snap.values():
+                if val is not None and not isinstance(val, bool):
+                    try:
+                        found.add(Decimal(str(val)))
+                    except (InvalidOperation, ValueError):
+                        pass
+    return found
+
+
 @dataclass(slots=True, frozen=True)
 class ClaimMismatch:
     raw: str
@@ -391,6 +420,8 @@ def apply_guardrails(
         )
 
     truth = collect_truth_set(tool_results) if tool_results is not None else set()
+    if tool_results is not None:
+        truth |= collect_idea_truth(tool_results)
     mismatches = verify_claims(text or "", truth) if truth else []
 
     final_text, injected = maybe_inject_disclaimer(text or "", ticker_index)
