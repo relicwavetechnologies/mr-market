@@ -18,7 +18,15 @@ if config.config_file_name is not None:
 
 from app.config import get_settings
 from app.db.base import Base
-from app.db.models import ChatAudit, News, PriceDaily, ScrapeLog, Stock, Technicals  # noqa: F401
+from app.db.models import (  # noqa: F401
+    ChatAudit,
+    Holding,
+    News,
+    PriceDaily,
+    ScrapeLog,
+    Stock,
+    Technicals,
+)
 
 target_metadata = Base.metadata
 config.set_main_option("sqlalchemy.url", get_settings().database_url)

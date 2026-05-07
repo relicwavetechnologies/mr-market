@@ -20,6 +20,8 @@ from app.analytics.levels import compute_levels
 from app.data.info_service import get_info
 from app.data.news_service import get_news_for_ticker
 from app.data.quote_service import get_quote
+from app.data.sources.nse_shareholding import quarter_label
+from app.db.models.holding import Holding
 from app.db.models.price import PriceDaily
 from app.db.models.technicals import Technicals
 
@@ -132,6 +134,34 @@ TOOL_SPECS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "get_holding",
+            "description": (
+                "Get the quarterly NSE shareholding pattern for an Indian stock — "
+                "promoter & promoter-group %, public %, employee-trust %, plus "
+                "QoQ and YoY deltas. Use this for questions about promoter holding "
+                "changes, FII / DII movement, or any 'who owns this' query. "
+                "Returns the latest N quarters with computed deltas; flags "
+                "promoter shifts of ≥1pp as 'significant'. Pure factual data, "
+                "no recommendations."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticker": {"type": "string", "description": "NSE ticker symbol"},
+                    "quarters": {
+                        "type": "integer",
+                        "description": "How many recent quarters to include (default 8, max 40).",
+                        "minimum": 1,
+                        "maximum": 40,
+                    },
+                },
+                "required": ["ticker"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_company_info",
             "description": (
                 "Get fundamental info about an Indian stock: sector, industry, market "
@@ -173,7 +203,54 @@ async def dispatch(
         return await _get_levels_payload(
             session, str(args["ticker"]), window=int(args.get("window") or 90)
         )
+    if name == "get_holding":
+        return await _get_holding_payload(
+            session, str(args["ticker"]), quarters=int(args.get("quarters") or 8)
+        )
     return {"error": f"unknown tool: {name}"}
+
+
+async def _get_holding_payload(
+    session: AsyncSession, ticker: str, *, quarters: int
+) -> dict[str, Any]:
+    sym = ticker.upper().strip()
+    rows = (
+        await session.execute(
+            select(Holding)
+            .where(Holding.ticker == sym)
+            .order_by(desc(Holding.quarter_end))
+            .limit(max(1, min(quarters, 40)))
+        )
+    ).scalars().all()
+    if not rows:
+        return {"ticker": sym, "available": False, "note": "no shareholding rows"}
+
+    def _f(d):
+        return str(d) if d is not None else None
+
+    series = [
+        {
+            "quarter_end": r.quarter_end.isoformat(),
+            "quarter_label": quarter_label(r.quarter_end),
+            "promoter_pct": _f(r.promoter_pct),
+            "public_pct": _f(r.public_pct),
+            "employee_trust_pct": _f(r.employee_trust_pct),
+        }
+        for r in rows
+    ]
+    latest = rows[0]
+    return {
+        "ticker": sym,
+        "available": True,
+        "as_of": latest.quarter_end.isoformat(),
+        "latest_quarter_label": quarter_label(latest.quarter_end),
+        "latest": {
+            "promoter_pct": _f(latest.promoter_pct),
+            "public_pct": _f(latest.public_pct),
+            "employee_trust_pct": _f(latest.employee_trust_pct),
+        },
+        "series": series,
+    }
 
 
 async def _get_levels_payload(
