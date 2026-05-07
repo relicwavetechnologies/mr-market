@@ -5,6 +5,19 @@ export interface Message {
   sources?: Source[];
   timestamp: Date;
   isStreaming?: boolean;
+  guardrail?: {
+    overridden: boolean;
+    disclaimer_injected: boolean;
+    blocklist_hits: { rule_id: string; category: string; matched: string }[];
+    claim_mismatches: {
+      raw: string;
+      value: string;
+      unit: string | null;
+      closest: string | null;
+      delta_pct: string | null;
+    }[];
+    router_short_circuit?: boolean;
+  };
 }
 
 export interface Source {

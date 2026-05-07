@@ -15,11 +15,31 @@ import type { Source } from "@/types";
  * `onSources` receives a synthesised source list once tool calls finish.
  * `onMeta` lets the UI peek at intent/tool-call/tool-result events.
  */
+export type ChatFinal = {
+  message: string;        // canonical final assistant text (post-guardrail override if any)
+  blocked: boolean;       // true if guardrails replaced the streamed answer
+  guardrail?: GuardrailMeta;
+};
+
+export type GuardrailMeta = {
+  overridden: boolean;
+  disclaimer_injected: boolean;
+  blocklist_hits: { rule_id: string; category: string; matched: string }[];
+  claim_mismatches: {
+    raw: string;
+    value: string;
+    unit: string | null;
+    closest: string | null;
+    delta_pct: string | null;
+  }[];
+  router_short_circuit?: boolean;
+};
+
 export async function streamChat(
   message: string,
   onChunk: (text: string) => void,
   onSources: (sources: Source[]) => void,
-  onDone: () => void,
+  onDone: (final?: ChatFinal) => void,
   onMeta?: (event: ChatStreamEvent) => void,
 ): Promise<void> {
   const res = await fetch("/chat", {
@@ -38,6 +58,7 @@ export async function streamChat(
   let buf = "";
   const collectedSources: Source[] = [];
   const seenUrls = new Set<string>();
+  let lastGuardrail: GuardrailMeta | undefined;
 
   // Read SSE byte stream → split on blank lines → parse `data: {...}`.
   while (true) {
@@ -104,12 +125,27 @@ export async function streamChat(
           break;
         case "done":
           if (collectedSources.length) onSources(collectedSources);
-          onDone();
+          onDone({
+            message: (evt as { message?: string }).message ?? "",
+            blocked: Boolean((evt as { blocked?: boolean }).blocked),
+            guardrail: lastGuardrail,
+          });
           return;
         case "error":
           onChunk(`\n\n_${evt.message ?? "Backend error."}_`);
           onDone();
           return;
+        case "guardrail": {
+          const g = evt as unknown as GuardrailMeta & { type: "guardrail" };
+          lastGuardrail = {
+            overridden: Boolean(g.overridden),
+            disclaimer_injected: Boolean(g.disclaimer_injected),
+            blocklist_hits: g.blocklist_hits ?? [],
+            claim_mismatches: g.claim_mismatches ?? [],
+            router_short_circuit: g.router_short_circuit,
+          };
+          break;
+        }
         default:
           break;
       }
@@ -118,10 +154,13 @@ export async function streamChat(
   // Stream ended without an explicit `done` event — close out.
   if (collectedSources.length) onSources(collectedSources);
   onDone();
+  // Mark vars referenced for completeness; lastGuardrail not propagated here.
+  void lastGuardrail;
 }
 
 
 export type ChatStreamEvent =
+  | { type: "auth"; source: string }
   | { type: "intent"; intent: string | null; ticker: string | null }
   | { type: "tool_call"; name: string; args: Record<string, unknown> }
   | {
@@ -131,6 +170,7 @@ export type ChatStreamEvent =
       summary: Record<string, unknown>;
     }
   | { type: "delta"; text: string }
+  | ({ type: "guardrail" } & GuardrailMeta)
   | {
       type: "done";
       message: string;
@@ -147,7 +187,7 @@ class ApiClient {
     message: string,
     onChunk: (chunk: string) => void,
     onSources: (sources: Source[]) => void,
-    onDone: () => void,
+    onDone: (final?: ChatFinal) => void,
   ): Promise<void> {
     return streamChat(message, onChunk, onSources, onDone);
   }

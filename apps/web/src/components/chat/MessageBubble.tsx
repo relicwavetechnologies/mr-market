@@ -1,5 +1,5 @@
 import type { Message } from "@/types";
-import { Bot, User } from "lucide-react";
+import { AlertTriangle, Bot, ShieldCheck, User } from "lucide-react";
 
 interface Props {
   message: Message;
@@ -11,6 +11,9 @@ interface Props {
  */
 export function MessageBubble({ message }: Props) {
   const isUser = message.role === "user";
+  const g = message.guardrail;
+  const showOverride = g?.overridden;
+  const showMismatchHint = !showOverride && (g?.claim_mismatches?.length ?? 0) > 0;
 
   return (
     <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
@@ -20,14 +23,44 @@ export function MessageBubble({ message }: Props) {
         </div>
       )}
 
-      <div
-        className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-          isUser
-            ? "bg-emerald-600 text-white"
-            : "bg-gray-800 text-gray-200"
-        }`}
-      >
-        <MessageContent content={message.content} />
+      <div className={`flex max-w-[80%] flex-col gap-2`}>
+        {showOverride && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-700/40 bg-amber-900/20 px-3 py-2 text-xs text-amber-200">
+            <AlertTriangle size={13} className="mt-0.5 shrink-0 text-amber-400" />
+            <div>
+              <div className="font-medium">Replaced for compliance</div>
+              <div className="text-amber-200/80">
+                The model's draft contained{" "}
+                {g?.blocklist_hits?.[0]?.category ?? "advice"} language. The
+                streamed text was overridden with a SEBI-safe response.{" "}
+                {g?.blocklist_hits?.length ? (
+                  <span className="text-amber-300/80">
+                    ({g.blocklist_hits.map((h) => h.rule_id).join(", ")})
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        )}
+        {showMismatchHint && (
+          <div className="flex items-start gap-2 rounded-md border border-sky-700/40 bg-sky-900/20 px-3 py-2 text-[11px] text-sky-200">
+            <ShieldCheck size={12} className="mt-0.5 shrink-0 text-sky-400" />
+            <div>
+              Verifier flagged {g!.claim_mismatches.length} number
+              {g!.claim_mismatches.length === 1 ? "" : "s"} not seen in the
+              tool results. Logged for audit.
+            </div>
+          </div>
+        )}
+        <div
+          className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+            isUser
+              ? "bg-emerald-600 text-white"
+              : "bg-gray-800 text-gray-200"
+          }`}
+        >
+          <MessageContent content={message.content} />
+        </div>
       </div>
 
       {isUser && (
