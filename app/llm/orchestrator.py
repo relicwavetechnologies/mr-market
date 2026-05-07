@@ -86,6 +86,16 @@ def _summarise(name: str, payload: dict[str, Any]) -> dict[str, Any]:
             "n_support": len(payload.get("support") or []),
             "fib_direction": (payload.get("fibonacci") or {}).get("direction"),
         }
+    if name == "get_holding":
+        latest = payload.get("latest") or {}
+        return {
+            "ticker": payload.get("ticker"),
+            "available": payload.get("available"),
+            "latest_quarter": payload.get("latest_quarter_label"),
+            "promoter_pct": latest.get("promoter_pct"),
+            "public_pct": latest.get("public_pct"),
+            "n_quarters": len(payload.get("series") or []),
+        }
     return {"raw_keys": list(payload.keys())}
 
 
