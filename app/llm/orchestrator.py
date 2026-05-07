@@ -67,6 +67,17 @@ def _summarise(name: str, payload: dict[str, Any]) -> dict[str, Any]:
             "yfinance_ok": payload.get("yfinance") is not None,
             "screener_ok": payload.get("screener") is not None,
         }
+    if name == "get_technicals":
+        latest = payload.get("latest") or {}
+        return {
+            "ticker": payload.get("ticker"),
+            "available": (payload.get("summary") or {}).get("available"),
+            "rsi_14": latest.get("rsi_14"),
+            "rsi_zone": (payload.get("summary") or {}).get("rsi_zone"),
+            "above_sma50": (payload.get("summary") or {}).get("above_sma50"),
+            "above_sma200": (payload.get("summary") or {}).get("above_sma200"),
+            "atr_14": latest.get("atr_14"),
+        }
     return {"raw_keys": list(payload.keys())}
 
 
