@@ -1,35 +1,42 @@
-import { useEffect, useState } from "react";
-import { Check, KeyRound, RefreshCw, X } from "lucide-react";
+import { useEffect, useState } from 'react';
+import { CheckCircle2, KeyRound, Loader2, RefreshCw, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { clearApiKey, getAuthStatus, setApiKey } from '@/services/authApi';
+import type { AuthStatus } from '@/types';
+import { cn } from '@/lib/utils';
 
-type AuthStatus = {
-  configured: boolean;
-  source: "redis" | "env" | "codex_cli" | "none";
-  model_work: string;
-  model_router: string;
-  codex_auth_path?: string | null;
-  hint?: string | null;
+const SOURCE_LABEL: Record<string, string> = {
+  redis: 'Pasted key',
+  env: '.env file',
+  codex_cli: 'codex login',
+  none: 'Not configured',
 };
 
-const SOURCE_LABEL: Record<AuthStatus["source"], string> = {
-  redis: "pasted key",
-  env: ".env file",
-  codex_cli: "codex login",
-  none: "none",
-};
+function sourceLabel(source: string) {
+  return SOURCE_LABEL[source] ?? source;
+}
 
 export function AuthBanner() {
   const [status, setStatus] = useState<AuthStatus | null>(null);
-  const [pasteOpen, setPasteOpen] = useState(false);
-  const [pasteValue, setPasteValue] = useState("");
-  const [pasteBusy, setPasteBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const r = await fetch("/api/auth/openai/status");
-      if (!r.ok) return;
-      setStatus((await r.json()) as AuthStatus);
-    } catch {
-      /* offline */
+      setStatus(await getAuthStatus());
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -37,124 +44,184 @@ export function AuthBanner() {
     refresh();
   }, []);
 
-  const submit = async () => {
-    if (!pasteValue.trim()) return;
-    setPasteBusy(true);
+  const configured = status?.configured ?? false;
+
+  return (
+    <div className="flex items-center gap-2 text-[12px]">
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              'h-7 gap-1.5 rounded-full px-2.5 text-xs font-medium',
+              configured
+                ? 'text-foreground hover:bg-accent'
+                : 'text-accent-red hover:bg-accent-red/10',
+            )}
+          >
+            {loading ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : configured ? (
+              <CheckCircle2 className="size-3.5 text-accent-green" />
+            ) : (
+              <KeyRound className="size-3.5" />
+            )}
+            <span>
+              {configured ? sourceLabel(status!.source) : 'OpenAI key needed'}
+            </span>
+            {status && (
+              <span className="text-muted-foreground">· {status.model_work}</span>
+            )}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-80 p-0">
+          <KeyManager status={status} onChanged={setStatus} onRefresh={refresh} />
+        </PopoverContent>
+      </Popover>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={refresh}
+            className="text-muted-foreground hover:text-foreground"
+            aria-label="Refresh auth status"
+          >
+            <RefreshCw className={cn('size-3.5', loading && 'animate-spin')} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Refresh status</TooltipContent>
+      </Tooltip>
+
+      {error && (
+        <span className="text-[11px] text-accent-red">{error}</span>
+      )}
+    </div>
+  );
+}
+
+interface KeyManagerProps {
+  status: AuthStatus | null;
+  onChanged: (s: AuthStatus) => void;
+  onRefresh: () => void;
+}
+
+function KeyManager({ status, onChanged, onRefresh }: KeyManagerProps) {
+  const [key, setKey] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const save = async () => {
+    if (!key.trim()) return;
+    setBusy(true);
+    setErr(null);
     try {
-      await fetch("/api/auth/openai/key", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key: pasteValue.trim() }),
-      });
-      setPasteValue("");
-      setPasteOpen(false);
-      await refresh();
+      const next = await setApiKey(key.trim());
+      onChanged(next);
+      setKey('');
+    } catch (e) {
+      setErr((e as Error).message);
     } finally {
-      setPasteBusy(false);
+      setBusy(false);
     }
   };
 
   const clear = async () => {
-    await fetch("/api/auth/openai/key", { method: "DELETE" });
-    await refresh();
+    setBusy(true);
+    setErr(null);
+    try {
+      const next = await clearApiKey();
+      onChanged(next);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   };
 
-  if (!status) return null;
-
-  const okBg = "border-emerald-700/40 bg-emerald-900/20 text-emerald-200";
-  const errBg = "border-amber-700/40 bg-amber-900/20 text-amber-200";
-
   return (
-    <div className={`rounded-lg border px-3 py-2 text-xs ${status.configured ? okBg : errBg}`}>
-      <div className="flex items-center gap-3">
-        {status.configured ? (
-          <Check size={14} className="shrink-0 text-emerald-400" />
-        ) : (
-          <KeyRound size={14} className="shrink-0 text-amber-400" />
-        )}
-        <div className="flex-1">
-          {status.configured ? (
+    <div className="flex flex-col gap-3 p-4">
+      <div className="flex flex-col gap-1">
+        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+          OpenAI credential
+        </span>
+        <div className="flex items-center gap-2 text-[13px] text-foreground">
+          {status?.configured ? (
             <>
-              <span className="font-medium">OpenAI auth active</span>
-              <span className="text-text-muted">
-                {" · "}
-                source: <code className="text-emerald-300">{SOURCE_LABEL[status.source]}</code>
-                {status.codex_auth_path && (
-                  <>
-                    {" · "}
-                    <code className="text-text-muted">{status.codex_auth_path}</code>
-                  </>
-                )}
-                {" · "}
-                model: <code className="text-emerald-300">{status.model_work}</code>
-              </span>
+              <CheckCircle2 className="size-3.5 text-accent-green" />
+              <span>{sourceLabel(status.source)}</span>
             </>
           ) : (
             <>
-              <span className="font-medium">No OpenAI credential.</span>
-              <span className="text-text-muted">
-                {" "}
-                Run <code className="text-amber-300">codex login</code> in your terminal, or paste a key below.
-              </span>
+              <KeyRound className="size-3.5 text-accent-red" />
+              <span>Not configured</span>
             </>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={refresh}
-            className="rounded p-1 text-text-muted transition-colors hover:bg-bg-hover hover:text-text-primary"
-            aria-label="Refresh auth status"
-            title="Re-check (e.g., after codex login)"
+        {status?.codex_auth_path && (
+          <span className="truncate text-[11px] text-muted-foreground">
+            {status.codex_auth_path}
+          </span>
+        )}
+        {status?.hint && (
+          <span className="text-[11px] text-muted-foreground">{status.hint}</span>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <label className="text-[11px] text-muted-foreground" htmlFor="openai-key">
+          Paste a key (24h Redis TTL)
+        </label>
+        <div className="flex gap-1.5">
+          <Input
+            id="openai-key"
+            type="password"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder="sk-..."
+            onKeyDown={(e) => e.key === 'Enter' && save()}
+            className="h-8 text-[12px]"
+          />
+          <Button
+            type="button"
+            size="sm"
+            onClick={save}
+            disabled={busy || !key.trim()}
+            className="h-8"
           >
-            <RefreshCw size={12} />
-          </button>
-          {status.source === "redis" ? (
-            <button
-              onClick={clear}
-              className="rounded px-2 py-0.5 text-[11px] text-text-muted transition-colors hover:bg-bg-hover hover:text-text-primary"
-            >
-              <X size={11} className="-mt-0.5 mr-1 inline" />
-              clear
-            </button>
-          ) : (
-            <button
-              onClick={() => setPasteOpen((o) => !o)}
-              className="rounded px-2 py-0.5 text-[11px] text-text-muted transition-colors hover:bg-bg-hover hover:text-text-primary"
-            >
-              paste key
-            </button>
-          )}
+            Save
+          </Button>
         </div>
       </div>
 
-      {pasteOpen && (
-        <div className="mt-2 flex items-center gap-2">
-          <input
-            type="password"
-            placeholder="sk-..."
-            value={pasteValue}
-            onChange={(e) => setPasteValue(e.target.value)}
-            className="flex-1 rounded border border-border-subtle bg-bg-tertiary px-2 py-1 text-[12px] text-text-primary outline-none focus:border-accent"
-            onKeyDown={(e) => e.key === "Enter" && submit()}
-          />
-          <button
-            onClick={submit}
-            disabled={pasteBusy || !pasteValue.trim()}
-            className="rounded bg-accent px-3 py-1 text-[12px] font-medium text-white disabled:opacity-40"
-          >
-            {pasteBusy ? "saving…" : "save"}
-          </button>
-          <button
-            onClick={() => {
-              setPasteOpen(false);
-              setPasteValue("");
-            }}
-            className="rounded px-2 py-1 text-[12px] text-text-muted hover:text-text-primary"
-          >
-            cancel
-          </button>
-        </div>
+      {status?.source === 'redis' && (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={clear}
+          disabled={busy}
+          className="h-8 gap-1.5 text-xs"
+        >
+          <X className="size-3.5" />
+          Clear pasted key
+        </Button>
       )}
+
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        onClick={onRefresh}
+        className="h-7 gap-1.5 self-start text-[11px] text-muted-foreground hover:text-foreground"
+      >
+        <RefreshCw className="size-3" />
+        Re-check (after `codex login`)
+      </Button>
+
+      {err && <span className="text-[11px] text-accent-red">{err}</span>}
     </div>
   );
 }

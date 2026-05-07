@@ -1,113 +1,139 @@
-import type { Message } from "@/types";
-import { AlertTriangle, Bot, ShieldCheck, User } from "lucide-react";
+import { Check, Loader2, AlertTriangle } from 'lucide-react';
+import type { Message, ToolEvent } from '@/types';
+import { Disclaimer } from '@/components/common/Disclaimer';
+import { parseMarkdown } from '@/utils/parseMarkdown';
 
-interface Props {
+interface MessageBubbleProps {
   message: Message;
 }
 
-/**
- * Renders a single chat message as a bubble.
- * Handles basic markdown-like formatting for code blocks and bold text.
- */
-export function MessageBubble({ message }: Props) {
-  const isUser = message.role === "user";
-  const g = message.guardrail;
-  const showOverride = g?.overridden;
-  const showMismatchHint = !showOverride && (g?.claim_mismatches?.length ?? 0) > 0;
+export function MessageBubble({ message }: MessageBubbleProps) {
+  if (message.role === 'user') {
+    return <UserMessage content={message.content} />;
+  }
+  return <AssistantMessage message={message} />;
+}
 
+function UserMessage({ content }: { content: string }) {
   return (
-    <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
-      {!isUser && (
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-900/50">
-          <Bot className="h-4 w-4 text-emerald-400" />
-        </div>
-      )}
-
-      <div className={`flex max-w-[80%] flex-col gap-2`}>
-        {showOverride && (
-          <div className="flex items-start gap-2 rounded-md border border-amber-700/40 bg-amber-900/20 px-3 py-2 text-xs text-amber-200">
-            <AlertTriangle size={13} className="mt-0.5 shrink-0 text-amber-400" />
-            <div>
-              <div className="font-medium">Replaced for compliance</div>
-              <div className="text-amber-200/80">
-                The model's draft contained{" "}
-                {g?.blocklist_hits?.[0]?.category ?? "advice"} language. The
-                streamed text was overridden with a SEBI-safe response.{" "}
-                {g?.blocklist_hits?.length ? (
-                  <span className="text-amber-300/80">
-                    ({g.blocklist_hits.map((h) => h.rule_id).join(", ")})
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        )}
-        {showMismatchHint && (
-          <div className="flex items-start gap-2 rounded-md border border-sky-700/40 bg-sky-900/20 px-3 py-2 text-[11px] text-sky-200">
-            <ShieldCheck size={12} className="mt-0.5 shrink-0 text-sky-400" />
-            <div>
-              Verifier flagged {g!.claim_mismatches.length} number
-              {g!.claim_mismatches.length === 1 ? "" : "s"} not seen in the
-              tool results. Logged for audit.
-            </div>
-          </div>
-        )}
-        <div
-          className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-            isUser
-              ? "bg-emerald-600 text-white"
-              : "bg-gray-800 text-gray-200"
-          }`}
-        >
-          <MessageContent content={message.content} />
-        </div>
-      </div>
-
-      {isUser && (
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-700">
-          <User className="h-4 w-4 text-gray-300" />
-        </div>
-      )}
+    <div className="animate-fade-in">
+      <h2 className="font-serif text-3xl font-normal leading-snug tracking-tight text-foreground sm:text-[34px]">
+        {content}
+      </h2>
     </div>
   );
 }
 
-/** Renders message content with basic formatting for code blocks. */
-function MessageContent({ content }: { content: string }) {
-  if (!content) {
-    return <span className="text-gray-500 italic">...</span>;
-  }
-
-  // Split on code blocks (```...```)
-  const parts = content.split(/(```[\s\S]*?```)/g);
+function AssistantMessage({ message }: { message: Message }) {
+  const { content, sources = [], toolEvents = [], isStreaming, blocked } = message;
+  const hasContent = content.length > 0;
+  const showWaiting = isStreaming && !hasContent && toolEvents.length === 0;
 
   return (
-    <>
-      {parts.map((part, i) => {
-        if (part.startsWith("```") && part.endsWith("```")) {
-          const code = part.slice(3, -3).replace(/^\w+\n/, ""); // strip language hint
-          return (
-            <pre
-              key={i}
-              className="my-2 overflow-x-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-300"
-            >
-              <code>{code}</code>
-            </pre>
-          );
-        }
-        // Render bold (**text**)
-        const formatted = part.split(/(\*\*[^*]+\*\*)/g).map((seg, j) => {
-          if (seg.startsWith("**") && seg.endsWith("**")) {
-            return (
-              <strong key={j} className="font-semibold text-white">
-                {seg.slice(2, -2)}
-              </strong>
-            );
-          }
-          return <span key={j}>{seg}</span>;
-        });
-        return <span key={i}>{formatted}</span>;
-      })}
-    </>
+    <div className="animate-fade-in space-y-4">
+      {showWaiting && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="size-3.5 animate-spin text-foreground/70" />
+          <span>Routing your question…</span>
+        </div>
+      )}
+
+      {toolEvents.length > 0 && <ToolEventList events={toolEvents} />}
+
+      {!showWaiting && hasContent && sources.length > 0 && !isStreaming && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="flex size-4 items-center justify-center rounded-full bg-accent">
+            <Check className="size-2.5 text-foreground/80" />
+          </span>
+          <span>
+            {sources.length} source{sources.length === 1 ? '' : 's'} consulted
+          </span>
+        </div>
+      )}
+
+      {hasContent && (
+        <div className="answer-copy">
+          {parseMarkdown(content, sources)}
+          {isStreaming && (
+            <span className="cursor-blink ml-0.5 text-accent-blue">▍</span>
+          )}
+        </div>
+      )}
+
+      {blocked && (
+        <div className="flex items-start gap-2 rounded-lg border border-accent-red/40 bg-accent-red/5 px-3 py-2.5">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-accent-red" />
+          <p className="text-[12px] leading-relaxed text-foreground">
+            This question crosses the SEBI advice line. Mr. Market refused as
+            designed — try asking for facts (price, news, fundamentals) instead.
+          </p>
+        </div>
+      )}
+
+      {!isStreaming && hasContent && !blocked && <Disclaimer />}
+    </div>
+  );
+}
+
+const TOOL_LABELS: Record<string, string> = {
+  get_quote: 'Quote',
+  get_news: 'News',
+  get_company_info: 'Fundamentals',
+};
+
+function ToolEventList({ events }: { events: ToolEvent[] }) {
+  return (
+    <ul className="flex flex-col gap-1.5">
+      {events.map((ev, i) => (
+        <ToolEventRow key={`${ev.name}-${i}`} ev={ev} />
+      ))}
+    </ul>
+  );
+}
+
+function ToolEventRow({ ev }: { ev: ToolEvent }) {
+  const label = TOOL_LABELS[ev.name] ?? ev.name;
+  const ticker =
+    (ev.summary?.ticker as string | undefined) ??
+    (ev.args?.ticker as string | undefined);
+
+  let detail = '';
+  if (ev.status === 'done' && ev.summary) {
+    if (ev.name === 'get_quote') {
+      const conf = ev.summary.confidence as string | undefined;
+      const ok = (ev.summary.ok_sources as string[] | undefined)?.length ?? 0;
+      detail = `${conf ?? '?'} · ${ok} source${ok === 1 ? '' : 's'}`;
+    } else if (ev.name === 'get_news') {
+      const cnt = (ev.summary.count as number | undefined) ?? 0;
+      detail = `${cnt} headline${cnt === 1 ? '' : 's'}`;
+    } else if (ev.name === 'get_company_info') {
+      const yf = ev.summary.yfinance_ok ? 'yfinance' : '';
+      const sc = ev.summary.screener_ok ? 'Screener' : '';
+      detail = [yf, sc].filter(Boolean).join(' + ') || '—';
+    }
+  }
+
+  return (
+    <li className="flex items-center gap-2 text-xs">
+      {ev.status === 'running' ? (
+        <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+      ) : (
+        <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-accent">
+          <Check className="size-2.5 text-foreground/80" />
+        </span>
+      )}
+      <span className="font-medium text-foreground/80">{label}</span>
+      {ticker && (
+        <span className="rounded-md bg-accent px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-foreground/80">
+          {ticker}
+        </span>
+      )}
+      {detail && <span className="text-muted-foreground">· {detail}</span>}
+      {ev.status === 'done' && typeof ev.ms === 'number' && (
+        <span className="ml-auto text-[11px] text-muted-foreground">
+          {ev.ms < 1000 ? `${ev.ms}ms` : `${(ev.ms / 1000).toFixed(1)}s`}
+        </span>
+      )}
+    </li>
   );
 }

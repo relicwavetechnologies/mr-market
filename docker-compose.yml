@@ -1,0 +1,101 @@
+# Mr. Market — local stack.
+#   docker compose up      → starts everything in foreground with colored logs (Ctrl+C stops)
+#   docker compose up -d   → detached
+#   docker compose down    → stop + remove containers (data persists in named volumes)
+#   docker compose down -v → also wipe Postgres + Redis data
+#   docker compose logs -f api web   → follow specific services
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mrmarket
+      POSTGRES_PASSWORD: mrmarket
+      POSTGRES_DB: mrmarket
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mrmarket -d mrmarket"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://mrmarket:mrmarket@db:5432/mrmarket
+      SYNC_DATABASE_URL: postgresql://mrmarket:mrmarket@db:5432/mrmarket
+      REDIS_URL: redis://redis:6379/0
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL_WORK: ${OPENAI_MODEL_WORK:-gpt-4o-mini}
+      OPENAI_MODEL_ROUTER: ${OPENAI_MODEL_ROUTER:-gpt-4o-mini}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ENV: docker
+    ports:
+      - "8000:8000"
+    volumes:
+      # Hot reload: mount source so edits take effect without rebuild.
+      - ./app:/app/app
+      - ./scripts:/app/scripts
+      - ./migrations:/app/migrations
+      - ./data:/app/data
+      - ./tests:/app/tests
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --reload
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.dev
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      VITE_PROXY_TARGET: http://api:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./apps/web:/app
+      - web_node_modules:/app/node_modules
+    command: ["pnpm", "dev", "--host", "0.0.0.0"]
+
+volumes:
+  pgdata:
+  redisdata:
+  web_node_modules:

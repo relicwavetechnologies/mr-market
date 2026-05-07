@@ -19,5 +19,7 @@
       "@/*": ["src/*"]
     }
   },
+  "files": [],
+  "exclude": ["dist", "node_modules"],
   "references": [{ "path": "./tsconfig.app.json" }]
 }

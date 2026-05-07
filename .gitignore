@@ -33,8 +33,10 @@ wheels/
 node_modules/
 frontend/dist/
 frontend/.vite/
+apps/web/dist/
+apps/web/.vite/
+*.tsbuildinfo
+apps/web/vite.config.js
 
 # Logs
 *.log
-
-*.tsbuildinfo
