@@ -273,7 +273,10 @@ async def dispatch(
         )
     if name == "get_holding":
         return await _get_holding_payload(
-            session, str(args["ticker"]), quarters=int(args.get("quarters") or 8)
+            session,
+            redis,
+            str(args["ticker"]),
+            quarters=int(args.get("quarters") or 8),
         )
     if name == "get_deals":
         return await _get_deals_payload(
@@ -387,7 +390,7 @@ async def _get_deals_payload(
 
 
 async def _get_holding_payload(
-    session: AsyncSession, ticker: str, *, quarters: int
+    session: AsyncSession, redis, ticker: str, *, quarters: int
 ) -> dict[str, Any]:
     sym = ticker.upper().strip()
     rows = (
@@ -415,7 +418,7 @@ async def _get_holding_payload(
         for r in rows
     ]
     latest = rows[0]
-    return {
+    payload = {
         "ticker": sym,
         "available": True,
         "as_of": latest.quarter_end.isoformat(),
@@ -427,6 +430,81 @@ async def _get_holding_payload(
         },
         "series": series,
     }
+
+    # Best-effort pledge drill-down. Failures are silent — pledge data is
+    # additive, not load-bearing for the holding answer.
+    pledge = await _fetch_pledge_cached(redis, sym)
+    if pledge is not None:
+        payload["pledge"] = pledge
+        payload["latest"]["pledged_pct"] = pledge.get("pledged_pct")
+        payload["latest"]["pledge_risk_band"] = pledge.get("risk_band")
+    if getattr(latest, "xbrl_url", None):
+        payload["xbrl_url"] = latest.xbrl_url
+
+    return payload
+
+
+_PLEDGE_TTL_S = 6 * 3600  # 6h: pledge filings are quarterly + ad-hoc — no need to hammer NSE
+
+
+async def _fetch_pledge_cached(redis, ticker: str) -> dict[str, Any] | None:
+    """Return the latest pledge row as a small JSON-serialisable dict, or
+    None if NSE blocked / returned nothing. Cached in Redis so chat turns
+    never trigger a fresh scrape.
+    """
+    import json as _json
+
+    from app.data.sources.nse_pledge import fetch as fetch_pledge
+
+    sym = ticker.upper().strip()
+    cache_key = f"pledge:{sym}"
+
+    if redis is not None:
+        try:
+            cached = await redis.get(cache_key)
+        except Exception:  # noqa: BLE001
+            cached = None
+        if cached:
+            try:
+                return _json.loads(cached)
+            except Exception:  # noqa: BLE001
+                pass
+
+    try:
+        rows = await fetch_pledge(sym)
+    except Exception as e:  # noqa: BLE001
+        # Cache a negative for a short window so we don't hammer NSE on
+        # repeated fetches when it's blocking us.
+        if redis is not None:
+            try:
+                await redis.set(cache_key, _json.dumps(None), ex=300)
+            except Exception:  # noqa: BLE001
+                pass
+        # Returning None upstream — caller treats as "pledge unavailable".
+        _ = e  # explicit drop; logged at scrape level if needed
+        return None
+
+    if not rows:
+        return None
+
+    latest = rows[0]
+    out = {
+        "as_of": latest.quarter_end.isoformat(),
+        "as_of_label": quarter_label(latest.quarter_end),
+        "pledged_pct": str(latest.pledged_pct) if latest.pledged_pct is not None else None,
+        "promoter_pct": str(latest.promoter_pct) if latest.promoter_pct is not None else None,
+        "num_shares_pledged": latest.num_shares_pledged,
+        "total_promoter_shares": latest.total_promoter_shares,
+        "total_issued_shares": latest.total_issued_shares,
+        "broadcast_at": latest.broadcast_at.isoformat() if latest.broadcast_at else None,
+        "risk_band": latest.risk_band,
+    }
+    if redis is not None:
+        try:
+            await redis.set(cache_key, _json.dumps(out), ex=_PLEDGE_TTL_S)
+        except Exception:  # noqa: BLE001
+            pass
+    return out
 
 
 async def _get_levels_payload(
