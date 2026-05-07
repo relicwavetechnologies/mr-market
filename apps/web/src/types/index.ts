@@ -12,7 +12,12 @@ export type ToolName =
   | 'get_levels'
   | 'get_holding'
   | 'get_deals'
-  | 'get_research';
+  | 'get_research'
+  | 'run_screener'
+  | 'analyse_portfolio'
+  | 'propose_ideas'
+  | 'backtest_screener'
+  | 'add_to_watchlist';
 
 export interface ToolEvent {
   name: ToolName | string;
@@ -94,6 +99,66 @@ export interface ResearchSummary {
   top_score?: number;
   top_hits?: ResearchHit[];
   documents?: [string | null, string | null][];
+}
+
+// ----- Phase-3 tool-summary shapes -----------------------------------------
+
+export interface ScreenerTicker {
+  symbol?: string;
+  score?: number;
+}
+
+export interface ScreenerSummary {
+  available?: boolean;
+  screener_name?: string;
+  expr?: string;
+  n_matches?: number;
+  universe_size?: number;
+  exec_ms?: number;
+  top_tickers?: string[];
+  error?: string;
+}
+
+export interface PortfolioSummary {
+  available?: boolean;
+  portfolio_id?: number;
+  concentration?: number;
+  sector_pct?: Record<string, number>;
+  top_5_pct?: number;
+  beta_blend?: number;
+  div_yield?: number;
+  drawdown_1y?: number;
+  error?: string;
+}
+
+export interface TradeIdea {
+  ticker?: string;
+  thesis?: string;
+  entry?: number;
+  sl?: number;
+  target?: number;
+  rr_ratio?: number;
+  score?: number;
+}
+
+export interface TradeIdeaSummary {
+  available?: boolean;
+  risk_profile?: string;
+  theme?: string;
+  n_ideas?: number;
+  ideas?: TradeIdea[];
+  error?: string;
+}
+
+export interface BacktestSummary {
+  available?: boolean;
+  screener_name?: string;
+  period_days?: number;
+  hit_rate?: number;
+  mean_return?: number;
+  worst_drawdown?: number;
+  n_signals?: number;
+  error?: string;
 }
 
 export interface Message {

@@ -23,11 +23,15 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import type {
+  BacktestSummary,
   DealsSummary,
   HoldingSummary,
+  PortfolioSummary,
   ResearchSummary,
+  ScreenerSummary,
   TechnicalsSummary,
   ToolEvent,
+  TradeIdeaSummary,
 } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -54,19 +58,31 @@ export function ToolCards({ events }: { events: ToolEvent[] }) {
   const research = byName.get('get_research')?.summary as
     | ResearchSummary
     | undefined;
+  const screener = byName.get('run_screener')?.summary as
+    | ScreenerSummary
+    | undefined;
+  const portfolio = byName.get('analyse_portfolio')?.summary as
+    | PortfolioSummary
+    | undefined;
+  const ideas = byName.get('propose_ideas')?.summary as
+    | TradeIdeaSummary
+    | undefined;
+  const backtest = byName.get('backtest_screener')?.summary as
+    | BacktestSummary
+    | undefined;
 
-  if (!tech && !holding && !deals && !research) return null;
+  if (!tech && !holding && !deals && !research && !screener && !portfolio && !ideas && !backtest) return null;
 
-  // Render every fired tool — `available: false` becomes an empty-state
-  // card rather than a hidden card, so the user can see WHY there's no
-  // data ("no technicals computed yet for this ticker") instead of
-  // wondering if the tool ran at all.
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       {tech && <TechnicalsCard data={tech} />}
       {holding && <HoldingCard data={holding} />}
       {deals && <DealsCard data={deals} />}
       {research && <ResearchCard data={research} />}
+      {screener && <ScreenerCard data={screener} />}
+      {portfolio && <PortfolioCard data={portfolio} />}
+      {ideas && <TradeIdeaCard data={ideas} />}
+      {backtest && <BacktestCard data={backtest} />}
     </div>
   );
 }
@@ -525,6 +541,274 @@ export function ResearchCard({ data }: { data: ResearchSummary }) {
       ) : (
         <p className="text-[11px] text-muted-foreground">No chunks returned.</p>
       )}
+    </CardShell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Screener (Phase 3)
+// ---------------------------------------------------------------------------
+
+export function ScreenerCard({ data }: { data: ScreenerSummary }) {
+  const [showTickers, setShowTickers] = useState(false);
+
+  if (!data.available) {
+    return (
+      <CardShell title="Screener">
+        <EmptyState message={data.error ?? 'Screener engine not available yet.'} />
+      </CardShell>
+    );
+  }
+
+  const tickers = data.top_tickers ?? [];
+  return (
+    <CardShell title="Screener">
+      <div className="grid grid-cols-3 gap-3">
+        <Metric label="Matches" value={data.n_matches ?? 0} />
+        <Metric label="Universe" value={data.universe_size ?? '—'} />
+        <Metric
+          label="Time"
+          value={data.exec_ms != null ? `${data.exec_ms}ms` : '—'}
+        />
+      </div>
+      {data.screener_name && (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Screener: <span className="font-mono text-foreground/80">{data.screener_name}</span>
+        </p>
+      )}
+      {data.expr && !data.screener_name && (
+        <p className="mt-2 truncate text-[11px] text-muted-foreground">
+          Expr: <span className="font-mono text-foreground/80">{data.expr}</span>
+        </p>
+      )}
+      {tickers.length > 0 && (
+        <>
+          <ExpandToggle
+            open={showTickers}
+            onClick={() => setShowTickers((v) => !v)}
+            label={showTickers ? 'Hide matches' : `Show matches (${tickers.length})`}
+          />
+          {showTickers && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {tickers.map((t, i) => (
+                <span
+                  key={i}
+                  className="rounded-md bg-accent px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-foreground/80"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </CardShell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio diagnostics (Phase 3)
+// ---------------------------------------------------------------------------
+
+export function PortfolioCard({ data }: { data: PortfolioSummary }) {
+  const [showSectors, setShowSectors] = useState(false);
+
+  if (!data.available) {
+    return (
+      <CardShell title="Portfolio">
+        <EmptyState message={data.error ?? 'Portfolio analytics not available yet.'} />
+      </CardShell>
+    );
+  }
+
+  const sectors = data.sector_pct ?? {};
+  const sectorEntries = Object.entries(sectors).sort(([, a], [, b]) => b - a);
+  const drawdownTone = (data.drawdown_1y ?? 0) < -0.1 ? 'bad' : 'default';
+
+  return (
+    <CardShell title="Portfolio">
+      <div className="grid grid-cols-3 gap-3">
+        <Metric
+          label="Top-5 weight"
+          value={data.top_5_pct != null ? `${(data.top_5_pct * 100).toFixed(1)}%` : '—'}
+          tone={data.top_5_pct != null && data.top_5_pct > 0.7 ? 'warn' : 'default'}
+          hint={data.top_5_pct != null && data.top_5_pct > 0.7 ? 'concentrated' : undefined}
+        />
+        <Metric
+          label="Beta"
+          value={data.beta_blend?.toFixed(2) ?? '—'}
+        />
+        <Metric
+          label="Div yield"
+          value={data.div_yield != null ? `${(data.div_yield * 100).toFixed(2)}%` : '—'}
+        />
+        <Metric
+          label="1Y drawdown"
+          value={data.drawdown_1y != null ? `${(data.drawdown_1y * 100).toFixed(1)}%` : '—'}
+          tone={drawdownTone}
+        />
+      </div>
+      {sectorEntries.length > 0 && (
+        <>
+          <ExpandToggle
+            open={showSectors}
+            onClick={() => setShowSectors((v) => !v)}
+            label={showSectors ? 'Hide sectors' : `Sectors (${sectorEntries.length})`}
+          />
+          {showSectors && (
+            <table className="mt-2 w-full text-[11px] tabular-nums">
+              <thead>
+                <tr className="text-muted-foreground/70">
+                  <th className="text-left font-normal">Sector</th>
+                  <th className="text-right font-normal">Weight</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sectorEntries.map(([sector, pct]) => (
+                  <tr key={sector} className="border-t border-border/30 text-foreground/80">
+                    <td className="py-1 text-left">{sector}</td>
+                    <td className="py-1 text-right">{pct.toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
+    </CardShell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Trade ideas (Phase 3)
+// ---------------------------------------------------------------------------
+
+const SCORE_TONE = (score: number): 'good' | 'warn' | 'default' =>
+  score >= 0.7 ? 'good' : score >= 0.4 ? 'warn' : 'default';
+
+export function TradeIdeaCard({ data }: { data: TradeIdeaSummary }) {
+  if (!data.available) {
+    return (
+      <CardShell title="Trade Ideas">
+        <EmptyState message={data.error ?? 'Trade-idea engine not available yet.'} />
+      </CardShell>
+    );
+  }
+
+  const ideaList = data.ideas ?? [];
+  if (ideaList.length === 0) {
+    return (
+      <CardShell title="Trade Ideas">
+        <EmptyState message="No ideas matched this profile and theme. Try a broader screener." />
+      </CardShell>
+    );
+  }
+
+  return (
+    <CardShell title="Trade Ideas">
+      <div className="mb-2 flex items-center gap-3 text-[11px] text-muted-foreground">
+        <span>{data.n_ideas ?? ideaList.length} idea{(data.n_ideas ?? ideaList.length) === 1 ? '' : 's'}</span>
+        {data.risk_profile && <span>· {data.risk_profile}</span>}
+        {data.theme && <span>· {data.theme}</span>}
+      </div>
+      <ul className="flex flex-col gap-2">
+        {ideaList.map((idea, i) => (
+          <li
+            key={i}
+            className="rounded-md border border-border/60 bg-muted/20 px-2.5 py-2"
+          >
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="rounded-md bg-accent px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-foreground/80">
+                {idea.ticker ?? '—'}
+              </span>
+              {idea.score != null && (
+                <span
+                  className={cn(
+                    'text-[11px] font-medium tabular-nums',
+                    SCORE_TONE(idea.score) === 'good' && 'text-teal',
+                    SCORE_TONE(idea.score) === 'warn' && 'text-amber-500',
+                  )}
+                >
+                  {(idea.score * 100).toFixed(0)}
+                </span>
+              )}
+            </div>
+            {idea.thesis && (
+              <p className="mb-1.5 text-[12px] text-foreground/80">{idea.thesis}</p>
+            )}
+            <div className="grid grid-cols-3 gap-2">
+              <Metric
+                label="Entry"
+                value={idea.entry != null ? `₹${Number(idea.entry).toFixed(2)}` : '—'}
+              />
+              <Metric
+                label="SL"
+                value={idea.sl != null ? `₹${Number(idea.sl).toFixed(2)}` : '—'}
+                tone="bad"
+              />
+              <Metric
+                label="Target"
+                value={idea.target != null ? `₹${Number(idea.target).toFixed(2)}` : '—'}
+                tone="good"
+              />
+            </div>
+            {idea.rr_ratio != null && (
+              <p className="mt-1 text-[10px] tabular-nums text-muted-foreground">
+                R:R {idea.rr_ratio.toFixed(1)}x
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+    </CardShell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Backtest (Phase 3)
+// ---------------------------------------------------------------------------
+
+export function BacktestCard({ data }: { data: BacktestSummary }) {
+  if (!data.available) {
+    return (
+      <CardShell title="Backtest">
+        <EmptyState message={data.error ?? 'Backtest engine not available yet.'} />
+      </CardShell>
+    );
+  }
+
+  const hitTone = (data.hit_rate ?? 0) >= 0.6 ? 'good' : (data.hit_rate ?? 0) >= 0.4 ? 'warn' : 'bad';
+  const drawdownTone = (data.worst_drawdown ?? 0) < -0.15 ? 'bad' : 'default';
+
+  return (
+    <CardShell title="Backtest">
+      {data.screener_name && (
+        <p className="mb-2 text-[11px] text-muted-foreground">
+          Screener: <span className="font-mono text-foreground/80">{data.screener_name}</span>
+          {data.period_days && <span> · {data.period_days}d</span>}
+        </p>
+      )}
+      <div className="grid grid-cols-3 gap-3">
+        <Metric
+          label="Hit rate"
+          value={data.hit_rate != null ? `${(data.hit_rate * 100).toFixed(1)}%` : '—'}
+          tone={hitTone}
+        />
+        <Metric
+          label="Mean return"
+          value={data.mean_return != null ? `${(data.mean_return * 100).toFixed(2)}%` : '—'}
+          tone={data.mean_return != null && data.mean_return > 0 ? 'good' : 'default'}
+        />
+        <Metric
+          label="Signals"
+          value={data.n_signals ?? '—'}
+        />
+        <Metric
+          label="Max drawdown"
+          value={data.worst_drawdown != null ? `${(data.worst_drawdown * 100).toFixed(1)}%` : '—'}
+          tone={drawdownTone}
+        />
+      </div>
     </CardShell>
   );
 }
