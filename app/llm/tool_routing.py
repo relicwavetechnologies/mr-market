@@ -40,6 +40,7 @@ ALL_TOOLS: tuple[str, ...] = (
     "get_holding",
     "get_deals",
     "get_research",
+    "remember_fact",
 )
 
 # Per-intent allowlists. Keep these tight — the spirit of D8 is "fire

@@ -26,6 +26,12 @@ export interface ToolEvent {
 // All numeric fields are stringified (Decimal serialization) on the wire;
 // renderers should call `Number(x)` or display verbatim.
 
+export interface TechnicalsSeriesPoint {
+  ts?: string;
+  close?: string;
+  rsi_14?: string;
+}
+
 export interface TechnicalsSummary {
   ticker?: string;
   available?: boolean;
@@ -41,6 +47,13 @@ export interface TechnicalsSummary {
   above_sma50?: boolean;
   above_sma200?: boolean;
   atr_14?: string;
+  series?: TechnicalsSeriesPoint[];
+}
+
+export interface HoldingSeriesPoint {
+  quarter_label?: string;
+  promoter_pct?: string;
+  public_pct?: string;
 }
 
 export interface HoldingSummary {
@@ -54,6 +67,7 @@ export interface HoldingSummary {
   pledge_risk_band?: 'low' | 'moderate' | 'elevated' | 'high' | 'unknown';
   xbrl_url?: string | null;
   n_quarters?: number;
+  series?: HoldingSeriesPoint[];
 }
 
 export interface DealsSummary {

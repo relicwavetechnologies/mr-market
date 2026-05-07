@@ -12,7 +12,16 @@
  *    never from sentiment. Use the `risk-band-*` Tailwind utility classes.
  */
 
-import { ExternalLink, FileText, TrendingDown, TrendingUp } from 'lucide-react';
+import { useState } from 'react';
+import {
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  FileText,
+  Info,
+  TrendingDown,
+  TrendingUp,
+} from 'lucide-react';
 import type {
   DealsSummary,
   HoldingSummary,
@@ -48,12 +57,16 @@ export function ToolCards({ events }: { events: ToolEvent[] }) {
 
   if (!tech && !holding && !deals && !research) return null;
 
+  // Render every fired tool — `available: false` becomes an empty-state
+  // card rather than a hidden card, so the user can see WHY there's no
+  // data ("no technicals computed yet for this ticker") instead of
+  // wondering if the tool ran at all.
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      {tech?.available && <TechnicalsCard data={tech} />}
-      {holding?.available && <HoldingCard data={holding} />}
-      {deals?.available && <DealsCard data={deals} />}
-      {research?.available && <ResearchCard data={research} />}
+      {tech && <TechnicalsCard data={tech} />}
+      {holding && <HoldingCard data={holding} />}
+      {deals && <DealsCard data={deals} />}
+      {research && <ResearchCard data={research} />}
     </div>
   );
 }
@@ -97,6 +110,36 @@ function CardShell({
       </div>
       {children}
     </div>
+  );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-dashed border-border/60 bg-muted/20 px-2.5 py-2.5 text-[12px] text-muted-foreground">
+      <Info className="mt-0.5 size-3.5 shrink-0" />
+      <span>{message}</span>
+    </div>
+  );
+}
+
+function ExpandToggle({
+  open,
+  onClick,
+  label,
+}: {
+  open: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mt-2 flex w-full items-center justify-center gap-1 rounded-md border border-border/40 bg-muted/10 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
+    >
+      {open ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+      <span>{label}</span>
+    </button>
   );
 }
 
@@ -145,6 +188,16 @@ function fmtDecimal(v: string | undefined, digits = 2): string {
 }
 
 export function TechnicalsCard({ data }: { data: TechnicalsSummary }) {
+  const [showHistory, setShowHistory] = useState(false);
+
+  if (!data.available) {
+    return (
+      <CardShell title="Technicals" ticker={data.ticker}>
+        <EmptyState message="No technicals computed yet for this ticker. The nightly worker may not have populated the indicators." />
+      </CardShell>
+    );
+  }
+
   const rsi = fmtDecimal(data.rsi_14, 1);
   const rsiTone =
     data.rsi_zone === 'overbought'
@@ -159,6 +212,8 @@ export function TechnicalsCard({ data }: { data: TechnicalsSummary }) {
       : data.macd_above_signal === false
         ? 'bearish (below signal)'
         : undefined;
+  const series = data.series ?? [];
+  const hasHistory = series.length > 1;
 
   return (
     <CardShell
@@ -195,6 +250,45 @@ export function TechnicalsCard({ data }: { data: TechnicalsSummary }) {
           tone={data.above_sma200 ? 'good' : data.above_sma200 === false ? 'bad' : 'default'}
         />
       </div>
+
+      {hasHistory && (
+        <>
+          <ExpandToggle
+            open={showHistory}
+            onClick={() => setShowHistory((v) => !v)}
+            label={showHistory ? 'Hide history' : `History (${series.length} bars)`}
+          />
+          {showHistory && (
+            <table className="mt-2 w-full text-[11px] tabular-nums">
+              <thead>
+                <tr className="text-muted-foreground/70">
+                  <th className="text-left font-normal">Date</th>
+                  <th className="text-right font-normal">Close</th>
+                  <th className="text-right font-normal">RSI</th>
+                </tr>
+              </thead>
+              <tbody>
+                {series.map((s, i) => (
+                  <tr
+                    key={i}
+                    className="border-t border-border/30 text-foreground/80"
+                  >
+                    <td className="py-1 text-left">
+                      {s.ts ? s.ts.slice(0, 10) : '—'}
+                    </td>
+                    <td className="py-1 text-right">
+                      {s.close ? `₹${fmtDecimal(s.close, 2)}` : '—'}
+                    </td>
+                    <td className="py-1 text-right">
+                      {s.rsi_14 ? fmtDecimal(s.rsi_14, 1) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
     </CardShell>
   );
 }
@@ -226,8 +320,20 @@ const PLEDGE_BAND_LABEL: Record<
 };
 
 export function HoldingCard({ data }: { data: HoldingSummary }) {
+  const [showHistory, setShowHistory] = useState(false);
+
+  if (!data.available) {
+    return (
+      <CardShell title="Shareholding" ticker={data.ticker}>
+        <EmptyState message="No shareholding rows on file. The NSE quarterly scrape may not have run for this ticker yet." />
+      </CardShell>
+    );
+  }
+
   const band = data.pledge_risk_band ?? 'unknown';
   const showPledge = data.pledged_pct !== undefined && data.pledged_pct !== null;
+  const series = data.series ?? [];
+  const hasHistory = series.length > 1;
 
   return (
     <CardShell title="Shareholding" ticker={data.ticker} asOf={data.latest_quarter}>
@@ -269,6 +375,43 @@ export function HoldingCard({ data }: { data: HoldingSummary }) {
           )}
         </div>
       )}
+
+      {hasHistory && (
+        <>
+          <ExpandToggle
+            open={showHistory}
+            onClick={() => setShowHistory((v) => !v)}
+            label={showHistory ? 'Hide history' : `History (${series.length} quarters)`}
+          />
+          {showHistory && (
+            <table className="mt-2 w-full text-[11px] tabular-nums">
+              <thead>
+                <tr className="text-muted-foreground/70">
+                  <th className="text-left font-normal">Quarter</th>
+                  <th className="text-right font-normal">Promoter</th>
+                  <th className="text-right font-normal">Public</th>
+                </tr>
+              </thead>
+              <tbody>
+                {series.map((s, i) => (
+                  <tr
+                    key={i}
+                    className="border-t border-border/30 text-foreground/80"
+                  >
+                    <td className="py-1 text-left">{s.quarter_label ?? '—'}</td>
+                    <td className="py-1 text-right">
+                      {s.promoter_pct ? `${fmtDecimal(s.promoter_pct, 2)}%` : '—'}
+                    </td>
+                    <td className="py-1 text-right">
+                      {s.public_pct ? `${fmtDecimal(s.public_pct, 2)}%` : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
     </CardShell>
   );
 }
@@ -278,6 +421,14 @@ export function HoldingCard({ data }: { data: HoldingSummary }) {
 // ---------------------------------------------------------------------------
 
 export function DealsCard({ data }: { data: DealsSummary }) {
+  if (!data.available) {
+    return (
+      <CardShell title={`Deals — ${data.kind ?? 'any'}`} ticker={data.ticker}>
+        <EmptyState message="No bulk or block deals reported by NSE for this ticker in the lookback window." />
+      </CardShell>
+    );
+  }
+
   const net = data.net_qty ?? 0;
   const netTone = net > 0 ? 'good' : net < 0 ? 'bad' : 'default';
   const netHint = net > 0 ? 'net BUY' : net < 0 ? 'net SELL' : 'flat';
@@ -329,6 +480,14 @@ export function DealsCard({ data }: { data: DealsSummary }) {
 // ---------------------------------------------------------------------------
 
 export function ResearchCard({ data }: { data: ResearchSummary }) {
+  if (!data.available) {
+    return (
+      <CardShell title="Research" ticker={data.ticker}>
+        <EmptyState message="No annual report or research document indexed for this ticker yet. Ask an operator to run scripts.ingest_research." />
+      </CardShell>
+    );
+  }
+
   const hits = data.top_hits ?? [];
   return (
     <CardShell title="Research" ticker={data.ticker}>
