@@ -198,6 +198,38 @@ TOOL_SPECS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "get_research",
+            "description": (
+                "Semantic search over ingested annual reports / research documents "
+                "for an Indian stock. Use this for 'what did management say about X' "
+                "questions or any qualitative ask grounded in the company's own "
+                "filings. Returns the top-K most-relevant chunks with the document "
+                "title, FY tag, page number, and a similarity score. The chunks "
+                "are factual extracts from the source PDF — quote them directly "
+                "and cite (title, page #) in the answer."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticker": {"type": "string", "description": "NSE ticker symbol"},
+                    "query": {
+                        "type": "string",
+                        "description": "the question to retrieve evidence for, e.g. 'Reliance JIO retail growth strategy'",
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": "How many chunks to return (default 5, max 20).",
+                        "minimum": 1,
+                        "maximum": 20,
+                    },
+                },
+                "required": ["ticker", "query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_company_info",
             "description": (
                 "Get fundamental info about an Indian stock: sector, industry, market "
@@ -250,7 +282,55 @@ async def dispatch(
             kind=str(args.get("kind") or "any"),
             days=int(args.get("days") or 90),
         )
+    if name == "get_research":
+        return await _get_research_payload(
+            session, redis,
+            ticker=str(args["ticker"]),
+            query=str(args["query"]),
+            top_k=int(args.get("top_k") or 5),
+        )
     return {"error": f"unknown tool: {name}"}
+
+
+async def _get_research_payload(
+    session: AsyncSession,
+    redis,
+    *,
+    ticker: str,
+    query: str,
+    top_k: int,
+) -> dict[str, Any]:
+    """Embed the query, run the cosine search, return the top-K chunks."""
+    from app.rag.embeddings import embed_one
+    from app.rag.retrieval import search, to_dict
+
+    sym = ticker.upper().strip()
+    try:
+        q_emb = await embed_one(query, redis=redis)
+    except Exception as e:  # noqa: BLE001
+        return {"ticker": sym, "available": False, "error": f"embed: {e!s}"}
+
+    hits = await search(
+        session, ticker=sym, query_embedding=q_emb, top_k=max(1, min(top_k, 20))
+    )
+    if not hits:
+        return {
+            "ticker": sym,
+            "available": False,
+            "query": query,
+            "n_hits": 0,
+            "note": (
+                "No ingested research documents for this ticker. Ask "
+                "the operator to run `scripts.ingest_research` for it."
+            ),
+        }
+    return {
+        "ticker": sym,
+        "available": True,
+        "query": query,
+        "n_hits": len(hits),
+        "hits": [to_dict(h) for h in hits],
+    }
 
 
 async def _get_deals_payload(

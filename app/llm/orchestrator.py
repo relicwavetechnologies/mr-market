@@ -106,6 +106,15 @@ def _summarise(name: str, payload: dict[str, Any]) -> dict[str, Any]:
             "n_sells": payload.get("n_sells"),
             "net_qty": payload.get("net_qty"),
         }
+    if name == "get_research":
+        hits = payload.get("hits") or []
+        return {
+            "ticker": payload.get("ticker"),
+            "available": payload.get("available"),
+            "n_hits": payload.get("n_hits"),
+            "top_score": (max((h.get("score") or 0) for h in hits) if hits else None),
+            "documents": sorted({(h.get("document_title"), h.get("document_fy")) for h in hits}),
+        }
     return {"raw_keys": list(payload.keys())}
 
 

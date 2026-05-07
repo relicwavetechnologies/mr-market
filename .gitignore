@@ -40,3 +40,4 @@ apps/web/vite.config.js
 
 # Logs
 *.log
+data/research/

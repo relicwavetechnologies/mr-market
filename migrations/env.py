@@ -22,6 +22,8 @@ from app.db.models import (  # noqa: F401
     ChatAudit,
     Conversation,
     Deal,
+    Document,
+    DocumentChunk,
     Holding,
     Message,
     News,

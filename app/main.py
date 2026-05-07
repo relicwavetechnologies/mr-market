@@ -15,6 +15,7 @@ from app.api import (
     levels,
     news,
     quote,
+    research,
     technicals,
     users,
 )
@@ -73,6 +74,7 @@ def create_app() -> FastAPI:
     app.include_router(levels.router)
     app.include_router(holding.router)
     app.include_router(deals.router)
+    app.include_router(research.router)
     app.include_router(chat.router)
     return app
 

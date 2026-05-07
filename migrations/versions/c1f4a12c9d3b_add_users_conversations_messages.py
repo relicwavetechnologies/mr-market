@@ -1,7 +1,7 @@
 """add users conversations messages
 
 Revision ID: c1f4a12c9d3b
-Revises: b2d187025f5d
+Revises: 048867e3b20e
 Create Date: 2026-05-07 23:58:00.000000
 
 """
@@ -13,7 +13,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "c1f4a12c9d3b"
-down_revision: Union[str, Sequence[str], None] = "b2d187025f5d"
+down_revision: Union[str, Sequence[str], None] = "048867e3b20e"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -1,6 +1,7 @@
 from app.db.models.chat_audit import ChatAudit
 from app.db.models.conversation import Conversation
 from app.db.models.deal import Deal
+from app.db.models.document import Document, DocumentChunk
 from app.db.models.holding import Holding
 from app.db.models.message import Message
 from app.db.models.news import News
@@ -14,6 +15,8 @@ __all__ = [
     "ChatAudit",
     "Conversation",
     "Deal",
+    "Document",
+    "DocumentChunk",
     "Holding",
     "Message",
     "News",
