@@ -114,16 +114,40 @@ export interface User {
 
 export interface AuthStatus {
   configured: boolean;
-  source: 'codex_cli' | 'env' | 'redis' | 'none' | string;
+  source: 'codex_oauth' | 'codex_cli' | 'env' | 'redis' | 'none' | string;
   model_work: string;
   model_router: string;
+  using_fallback?: boolean;
+  fallback_reason?: string | null;
   codex_auth_path?: string | null;
+  expires_at?: number | null;
   hint?: string | null;
 }
 
+export interface CodexInitiateResponse {
+  auth_url: string;
+  state: string;
+  redirect_uri: string;
+}
+
 export type ChatStreamEvent =
-  | { type: 'auth'; source: string }
+  | {
+      type: 'auth';
+      source: string;
+      model?: string;
+      using_fallback?: boolean;
+      message?: string | null;
+    }
   | { type: 'conversation'; conversation_id: string }
+  | {
+      type: 'memory_status';
+      status: 'used' | 'miss' | 'unavailable';
+      source: 'summary' | 'search' | 'summary+search' | 'none';
+      reason: string | null;
+      summary_version?: number | null;
+      facts_count?: number;
+      hits_count?: number;
+    }
   | { type: 'intent'; intent: string | null; ticker: string | null }
   | { type: 'tool_call'; name: string; args: Record<string, unknown> }
   | {

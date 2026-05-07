@@ -24,9 +24,13 @@ export function HomePage() {
             Midas
           </h1>
 
-          <div className="mb-4">
+          <div className="mb-2">
             <SearchInput onSubmit={handleSubmit} placeholder="Ask anything..." autoFocus />
           </div>
+
+          <p className="mb-4 mt-1.5 text-center text-[10px] leading-tight text-muted-foreground/80">
+            Midas is AI and can make mistakes. Verify before acting — not investment advice.
+          </p>
 
           <SuggestionChips onChipClick={handleSubmit} />
         </div>

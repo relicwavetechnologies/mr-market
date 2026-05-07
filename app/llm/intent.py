@@ -24,16 +24,16 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 
 Intent = Literal[
-    "quote",          # "price of X"
-    "news",           # "what's the news on X" / "why is X falling"
-    "company_info",   # "tell me about X" / "what is X's P/E"
-    "technicals",     # "RSI on X" / "MACD signal" / "key levels"
-    "holding",        # "promoter holding" / "who owns X" / "FII flow"
-    "deals",          # "block deals on X" / "institutional flows"
-    "research",       # "from X's annual report" / "what did mgmt say about Y"
-    "advisory",       # "should I buy X" / "target for X" / "SL for X"
-    "education",      # "what is P/E ratio"
-    "refuse",         # off-topic / nonsense / non-financial only
+    "quote",  # "price of X"
+    "news",  # "what's the news on X" / "why is X falling"
+    "company_info",  # "tell me about X" / "what is X's P/E"
+    "technicals",  # "RSI on X" / "MACD signal" / "key levels"
+    "holding",  # "promoter holding" / "who owns X" / "FII flow"
+    "deals",  # "block deals on X" / "institutional flows"
+    "research",  # "from X's annual report" / "what did mgmt say about Y"
+    "advisory",  # "should I buy X" / "target for X" / "SL for X"
+    "education",  # "what is P/E ratio"
+    "refuse",  # off-topic / nonsense / non-financial only
     "other",
 ]
 
@@ -121,12 +121,23 @@ CRITICAL:
 _FORCE_JSON = {"type": "json_object"}
 
 _VALID_INTENTS = {
-    "quote", "news", "company_info", "technicals", "holding", "deals",
-    "research", "advisory", "education", "refuse", "other",
+    "quote",
+    "news",
+    "company_info",
+    "technicals",
+    "holding",
+    "deals",
+    "research",
+    "advisory",
+    "education",
+    "refuse",
+    "other",
 }
 
 
-async def classify(client: AsyncOpenAI, user_message: str) -> dict:
+async def classify(
+    client: AsyncOpenAI, user_message: str, *, model: str | None = None
+) -> dict:
     """Best-effort classification. Returns {"intent": Intent, "ticker": str|None}.
     Never raises.
     """
@@ -134,7 +145,7 @@ async def classify(client: AsyncOpenAI, user_message: str) -> dict:
 
     try:
         resp = await client.chat.completions.create(
-            model=settings.openai_model_router,
+            model=model or settings.openai_model_router,
             temperature=0,
             max_tokens=60,
             response_format=_FORCE_JSON,

@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, KeyRound, Loader2, RefreshCw, X } from 'lucide-react';
+import {
+  CheckCircle2,
+  ExternalLink,
+  KeyRound,
+  Loader2,
+  LogOut,
+  RefreshCw,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -8,11 +15,19 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { clearApiKey, getAuthStatus, setApiKey } from '@/services/authApi';
+import {
+  clearApiKey,
+  completeCodexLogin,
+  disconnectCodexLogin,
+  getAuthStatus,
+  initiateCodexLogin,
+  setApiKey,
+} from '@/services/authApi';
 import type { AuthStatus } from '@/types';
 import { cn } from '@/lib/utils';
 
 const SOURCE_LABEL: Record<string, string> = {
+  codex_oauth: 'OpenAI connected',
   redis: 'Pasted key',
   env: '.env file',
   codex_cli: 'codex login',
@@ -21,6 +36,11 @@ const SOURCE_LABEL: Record<string, string> = {
 
 function sourceLabel(source: string) {
   return SOURCE_LABEL[source] ?? source;
+}
+
+function statusLabel(status: AuthStatus | null) {
+  if (!status?.configured) return 'OpenAI key needed';
+  return status.using_fallback ? 'Fallback mode' : sourceLabel(status.source);
 }
 
 export function AuthBanner() {
@@ -65,11 +85,9 @@ export function AuthBanner() {
             ) : configured ? (
               <CheckCircle2 className="size-3.5 text-accent-green" />
             ) : (
-              <KeyRound className="size-3.5" />
+            <KeyRound className="size-3.5" />
             )}
-            <span>
-              {configured ? sourceLabel(status!.source) : 'OpenAI key needed'}
-            </span>
+            <span>{status?.source === 'none' ? 'No model key' : statusLabel(status)}</span>
             {status && (
               <span className="text-muted-foreground">· {status.model_work}</span>
             )}
@@ -109,18 +127,34 @@ interface KeyManagerProps {
 }
 
 function KeyManager({ status, onChanged, onRefresh }: KeyManagerProps) {
-  const [key, setKey] = useState('');
+  const [callbackUrl, setCallbackUrl] = useState('');
+  const [fallbackKey, setFallbackKey] = useState('');
+  const [redirectUri, setRedirectUri] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const save = async () => {
-    if (!key.trim()) return;
+  const connect = async () => {
     setBusy(true);
     setErr(null);
     try {
-      const next = await setApiKey(key.trim());
+      const next = await initiateCodexLogin();
+      setRedirectUri(next.redirect_uri);
+      window.open(next.auth_url, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const complete = async () => {
+    if (!callbackUrl.trim()) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const next = await completeCodexLogin(callbackUrl.trim());
       onChanged(next);
-      setKey('');
+      setCallbackUrl('');
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -129,6 +163,34 @@ function KeyManager({ status, onChanged, onRefresh }: KeyManagerProps) {
   };
 
   const clear = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const next = await disconnectCodexLogin();
+      onChanged(next);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveFallbackKey = async () => {
+    if (!fallbackKey.trim()) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const next = await setApiKey(fallbackKey.trim());
+      onChanged(next);
+      setFallbackKey('');
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const clearFallbackKey = async () => {
     setBusy(true);
     setErr(null);
     try {
@@ -151,12 +213,12 @@ function KeyManager({ status, onChanged, onRefresh }: KeyManagerProps) {
           {status?.configured ? (
             <>
               <CheckCircle2 className="size-3.5 text-accent-green" />
-              <span>{sourceLabel(status.source)}</span>
+              <span>{statusLabel(status)}</span>
             </>
           ) : (
             <>
               <KeyRound className="size-3.5 text-accent-red" />
-              <span>Not configured</span>
+              <span>Neither Codex nor backend OPENAI_API_KEY is configured</span>
             </>
           )}
         </div>
@@ -165,38 +227,84 @@ function KeyManager({ status, onChanged, onRefresh }: KeyManagerProps) {
             {status.codex_auth_path}
           </span>
         )}
+        {status?.expires_at && (
+          <span className="text-[11px] text-muted-foreground">
+            Token refreshes from Redis · {formatExpiry(status.expires_at)}
+          </span>
+        )}
         {status?.hint && (
           <span className="text-[11px] text-muted-foreground">{status.hint}</span>
         )}
+        {status?.fallback_reason && !status?.hint && (
+          <span className="text-[11px] text-muted-foreground">
+            {status.fallback_reason}
+          </span>
+        )}
       </div>
+
+      <Button
+        type="button"
+        size="sm"
+        onClick={connect}
+        disabled={busy}
+        className="h-8 gap-1.5"
+      >
+        <ExternalLink className="size-3.5" />
+        Open OpenAI login
+      </Button>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-[11px] text-muted-foreground" htmlFor="openai-key">
-          Paste a key (24h Redis TTL)
+        <label className="text-[11px] text-muted-foreground" htmlFor="openai-callback">
+          Paste redirect URL
         </label>
-        <div className="flex gap-1.5">
-          <Input
-            id="openai-key"
-            type="password"
-            value={key}
-            onChange={(e) => setKey(e.target.value)}
-            placeholder="sk-..."
-            onKeyDown={(e) => e.key === 'Enter' && save()}
-            className="h-8 text-[12px]"
-          />
-          <Button
-            type="button"
-            size="sm"
-            onClick={save}
-            disabled={busy || !key.trim()}
-            className="h-8"
-          >
-            Save
-          </Button>
-        </div>
+        <Input
+          id="openai-callback"
+          value={callbackUrl}
+          onChange={(e) => setCallbackUrl(e.target.value)}
+          placeholder={redirectUri ?? 'http://localhost:1455/auth/callback?code=...'}
+          onKeyDown={(e) => e.key === 'Enter' && complete()}
+          className="h-8 text-[12px]"
+        />
+        <Button
+          type="button"
+          size="sm"
+          onClick={complete}
+          disabled={busy || !callbackUrl.trim()}
+          className="h-8 self-start"
+        >
+          Use Codex token
+        </Button>
       </div>
 
-      {status?.source === 'redis' && (
+      {status?.source !== 'codex_oauth' && status?.source !== 'codex_cli' && (
+        <div className="flex flex-col gap-1.5 border-t border-border/60 pt-3">
+          <label className="text-[11px] text-muted-foreground" htmlFor="openai-fallback-key">
+            Backend OPENAI_API_KEY fallback for GPT-4o mini
+          </label>
+          <div className="flex gap-1.5">
+            <Input
+              id="openai-fallback-key"
+              type="password"
+              value={fallbackKey}
+              onChange={(e) => setFallbackKey(e.target.value)}
+              placeholder="sk-..."
+              onKeyDown={(e) => e.key === 'Enter' && saveFallbackKey()}
+              className="h-8 text-[12px]"
+            />
+            <Button
+              type="button"
+              size="sm"
+              onClick={saveFallbackKey}
+              disabled={busy || !fallbackKey.trim()}
+              className="h-8"
+            >
+              Save
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {status?.source === 'codex_oauth' && (
         <Button
           type="button"
           size="sm"
@@ -205,8 +313,22 @@ function KeyManager({ status, onChanged, onRefresh }: KeyManagerProps) {
           disabled={busy}
           className="h-8 gap-1.5 text-xs"
         >
-          <X className="size-3.5" />
-          Clear pasted key
+          <LogOut className="size-3.5" />
+          Disconnect OpenAI
+        </Button>
+      )}
+
+      {status?.source === 'redis' && (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={clearFallbackKey}
+          disabled={busy}
+          className="h-8 gap-1.5 text-xs"
+        >
+          <LogOut className="size-3.5" />
+          Clear fallback key
         </Button>
       )}
 
@@ -218,10 +340,16 @@ function KeyManager({ status, onChanged, onRefresh }: KeyManagerProps) {
         className="h-7 gap-1.5 self-start text-[11px] text-muted-foreground hover:text-foreground"
       >
         <RefreshCw className="size-3" />
-        Re-check (after `codex login`)
+        Re-check
       </Button>
 
       {err && <span className="text-[11px] text-accent-red">{err}</span>}
     </div>
   );
+}
+
+function formatExpiry(epochSeconds: number) {
+  const date = new Date(epochSeconds * 1000);
+  if (Number.isNaN(date.getTime())) return 'expiry unknown';
+  return `expires ${date.toLocaleString()}`;
 }

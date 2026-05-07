@@ -12,6 +12,7 @@ import {
   Settings,
   Star,
   Sun,
+  Trash2,
   TrendingUp,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -43,6 +44,7 @@ export function Sidebar() {
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const fetchConversation = useChatStore((s) => s.fetchConversation);
+  const deleteConversation = useChatStore((s) => s.deleteConversation);
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const setShowAuthModal = useAuthStore((s) => s.setShowAuthModal);
@@ -60,6 +62,14 @@ export function Sidebar() {
     setActiveConversation(id);
     navigate(`/chat/${id}`);
     void fetchConversation(id).catch(() => undefined);
+  };
+
+  const handleDeleteConversation = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const wasActive = id === activeConversationId;
+    void deleteConversation(id).catch(() => undefined);
+    if (wasActive) navigate('/');
   };
 
   if (!sidebarOpen) {
@@ -209,22 +219,45 @@ export function Sidebar() {
               <p className="px-2 py-2 text-xs text-muted-foreground/70">No history yet</p>
             ) : (
               <ul className="flex flex-col gap-px">
-                {conversations.map((conv) => (
-                  <li key={conv.id}>
-                    <button
-                      onClick={() => handleConversationClick(conv.id)}
+                {conversations.map((conv) => {
+                  const isActive = conv.id === activeConversationId;
+                  return (
+                    <li
+                      key={conv.id}
                       className={cn(
-                        'flex h-7 w-full items-center rounded-md px-2 text-left text-[12.5px] transition-colors',
-                        conv.id === activeConversationId
+                        'group/conv relative flex h-7 items-center rounded-md transition-colors',
+                        isActive
                           ? 'bg-accent text-foreground'
                           : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
                       )}
-                      title={conv.title}
                     >
-                      <span className="truncate">{conv.title}</span>
-                    </button>
-                  </li>
-                ))}
+                      <button
+                        onClick={() => handleConversationClick(conv.id)}
+                        className="flex h-full w-full items-center px-2 pr-7 text-left text-[12.5px] outline-none"
+                        title={conv.title}
+                      >
+                        <span className="truncate">{conv.title}</span>
+                      </button>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteConversation(conv.id, e)}
+                            aria-label={`Delete ${conv.title}`}
+                            className={cn(
+                              'absolute right-1 flex size-5 items-center justify-center rounded text-muted-foreground transition-opacity',
+                              'opacity-0 group-hover/conv:opacity-100 focus-visible:opacity-100',
+                              'hover:bg-foreground/10 hover:text-accent-red focus-visible:outline-none',
+                            )}
+                          >
+                            <Trash2 className="size-3" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">Delete</TooltipContent>
+                      </Tooltip>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
