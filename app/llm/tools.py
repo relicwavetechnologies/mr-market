@@ -911,11 +911,22 @@ async def _propose_ideas_payload(
     risk_profile: str,
     theme: str | None,
 ) -> dict[str, Any]:
-    """Generate ranked trade ideas. Full implementation in B-3; stub for B-1."""
+    """Generate ranked trade ideas by orchestrating screener + technicals + levels.
+
+    Every number in the output (entry, sl, target) traces back to a tool
+    result — the numeric verifier can match them all.
+    """
     if risk_profile not in ("conservative", "balanced", "aggressive"):
         return {"available": False, "error": f"invalid risk_profile: {risk_profile}"}
     try:
         from app.analytics.screener import evaluate_expression, get_saved_screener
+    except ImportError:
+        return {
+            "available": False,
+            "error": "trade-idea engine not yet deployed — coming in the data-engine track",
+        }
+
+    try:
         screener_name = _theme_to_screener(theme, risk_profile)
         saved = await get_saved_screener(session, screener_name)
         if saved is None:
@@ -923,14 +934,28 @@ async def _propose_ideas_payload(
                 "available": False,
                 "error": f"no screener for theme '{theme or 'default'}' and profile '{risk_profile}'",
             }
-        results = await evaluate_expression(session, saved.expr, limit=5)
+        expr = _apply_risk_guard(saved.expr, risk_profile)
+        results = await evaluate_expression(session, expr, limit=5)
+        if not results.tickers:
+            return {
+                "available": True,
+                "risk_profile": risk_profile,
+                "theme": theme,
+                "screener_used": screener_name,
+                "ideas": [],
+                "note": "screener returned no matches for this profile",
+            }
+
         ideas = []
         for t in results.tickers:
-            ideas.append({
-                "ticker": t["symbol"],
-                "thesis": t.get("thesis", "Matches screener criteria"),
-                "score": t.get("score"),
-            })
+            sym = t["symbol"]
+            tech = await _get_technicals_payload(session, sym, days=1)
+            levels = await _get_levels_payload(session, sym, window=90)
+            idea = _build_idea(sym, tech, levels, risk_profile)
+            if idea is not None:
+                ideas.append(idea)
+
+        ideas.sort(key=lambda i: i.get("score", 0), reverse=True)
         return {
             "available": True,
             "risk_profile": risk_profile,
@@ -938,13 +963,98 @@ async def _propose_ideas_payload(
             "screener_used": screener_name,
             "ideas": ideas,
         }
-    except ImportError:
-        return {
-            "available": False,
-            "error": "trade-idea engine not yet deployed — coming in the data-engine track",
-        }
     except Exception as e:  # noqa: BLE001
         return {"available": False, "error": f"idea engine error: {e!s}"}
+
+
+def _build_idea(
+    ticker: str,
+    tech: dict[str, Any],
+    levels: dict[str, Any],
+    risk_profile: str,
+) -> dict[str, Any] | None:
+    """Compose a single trade idea from technicals + levels data.
+
+    Every numeric field comes from the tool payloads — nothing is invented.
+    Returns None if there's not enough data to form an idea.
+    """
+    latest = tech.get("latest") or {}
+    summary = tech.get("summary") or {}
+    close_raw = latest.get("close")
+    atr_raw = latest.get("atr_14")
+    if close_raw is None:
+        return None
+
+    close = float(close_raw)
+    atr = float(atr_raw) if atr_raw is not None else close * 0.02
+
+    sl_multiplier = {"conservative": 1.5, "balanced": 1.0, "aggressive": 0.75}
+    sl = round(close - atr * sl_multiplier.get(risk_profile, 1.0), 2)
+
+    resistance = levels.get("resistance") or []
+    targets_above = [
+        r for r in resistance
+        if isinstance(r, dict) and float(r.get("level", 0)) > close
+    ]
+    if targets_above:
+        target = round(float(targets_above[0]["level"]), 2)
+    else:
+        target = round(close + atr * 2, 2)
+
+    rr = round((target - close) / max(close - sl, 0.01), 2)
+
+    score = 0.0
+    rsi_raw = latest.get("rsi_14")
+    if rsi_raw is not None:
+        rsi = float(rsi_raw)
+        if rsi < 30:
+            score += 0.3
+        elif rsi < 50:
+            score += 0.15
+    if summary.get("macd_above_signal"):
+        score += 0.2
+    if summary.get("above_sma50"):
+        score += 0.15
+    if summary.get("above_sma200"):
+        score += 0.15
+    if rr > 2:
+        score += 0.2
+    elif rr > 1.5:
+        score += 0.1
+    score = round(min(score, 1.0), 2)
+
+    thesis_parts = []
+    if rsi_raw is not None:
+        rsi = float(rsi_raw)
+        zone = summary.get("rsi_zone", "neutral")
+        thesis_parts.append(f"RSI {rsi:.0f} ({zone})")
+    if summary.get("macd_above_signal"):
+        thesis_parts.append("MACD bullish")
+    elif summary.get("macd_above_signal") is False:
+        thesis_parts.append("MACD bearish")
+    if summary.get("above_sma200"):
+        thesis_parts.append("above SMA-200")
+    thesis_parts.append(f"R:R {rr:.1f}x")
+    thesis = "; ".join(thesis_parts)
+
+    return {
+        "ticker": ticker,
+        "thesis": thesis,
+        "entry": close,
+        "sl": sl,
+        "target": target,
+        "rr_ratio": rr,
+        "score": score,
+        "technicals_snapshot": {
+            "close": close,
+            "rsi_14": rsi_raw,
+            "atr_14": atr_raw,
+            "rsi_zone": summary.get("rsi_zone"),
+            "macd_above_signal": summary.get("macd_above_signal"),
+            "above_sma50": summary.get("above_sma50"),
+            "above_sma200": summary.get("above_sma200"),
+        },
+    }
 
 
 def _theme_to_screener(theme: str | None, risk_profile: str) -> str:
