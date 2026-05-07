@@ -41,12 +41,16 @@ from app.llm.prompts import INLINE_DISCLAIMER
 # Patterns are case-insensitive, anchored to word boundaries so we don't catch
 # "buyout" when matching "buy".
 BLOCKLIST: list[tuple[str, str, re.Pattern[str]]] = [
-    # --- imperative recommendation verbs (you should buy / sell / etc.) ----
+    # --- imperative recommendation verbs ----
+    # Catches "should I buy X", "should you sell", "must we exit", "I recommend
+    # buying", "we advise selling", etc. The bridge "(?:\w+\s+){0,3}" allows
+    # an optional pronoun / subject between the modal and the verb.
     (
         "rec_buy",
         "recommendation",
         re.compile(
-            r"\b(?:should|must|recommend|advise|advising|suggest|suggesting)\s+(?:you|to)?\s*"
+            r"\b(?:should|must|recommend|recommending|advise|advising|suggest|suggesting)"
+            r"\s+(?:\w+\s+){0,3}"
             r"(?:buy|buying|sell|selling|exit|exiting|short|shorting|"
             r"accumulate|accumulating|trim|trimming)\b",
             re.IGNORECASE,
@@ -359,13 +363,23 @@ def apply_guardrails(
     *,
     tool_results: dict[str, Any] | None = None,
     ticker_index: TickerIndex | None = None,
+    mode: str = "warn",
 ) -> GuardedOutput:
-    """Run all three layers. Override on blocklist hit; otherwise inject disclaimer
-    and return the (possibly extended) text. Claim mismatches are reported but
-    don't trigger an override (avoid false-positive UX).
+    """Run all three layers.
+
+    ``mode``:
+      * ``"strict"`` (Phase-1 SEBI mode) — blocklist hits OVERRIDE the text
+        with the canonical refusal. Sets ``overridden=True``.
+      * ``"warn"`` (Phase-2 internal-tool mode, default) — blocklist hits
+        are recorded for the audit trail and the UI banner; the streamed
+        text is NOT replaced. The disclaimer injector still runs.
+
+    Claim mismatches are reported in both modes but never trigger an override
+    on their own (too easy to misfire on timestamps / dates).
     """
     hits = find_blocklist_hits(text or "")
-    if hits:
+
+    if hits and mode == "strict":
         first = hits[0]
         override = REFUSAL_OVERRIDE_TEMPLATE.format(
             category=first.category, rule_id=first.rule_id
@@ -384,7 +398,7 @@ def apply_guardrails(
     return GuardedOutput(
         final_text=final_text,
         overridden=False,
-        blocklist_hits=[],
+        blocklist_hits=hits,                 # always recorded
         claim_mismatches=mismatches,
         disclaimer_injected=injected,
     )

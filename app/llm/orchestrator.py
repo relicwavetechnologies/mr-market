@@ -146,16 +146,17 @@ async def run_chat(
         "ticker": intent_info.get("ticker"),
     }
 
-    # --- Hard refusal short-circuit -------------------------------------------
+    # --- Off-topic / nonsense short-circuit ------------------------------------
+    # In Phase-2 internal-tool mode the router only emits "refuse" for genuine
+    # off-topic / non-financial questions ("what's the weather?"). Advisory
+    # asks (buy/sell/target/SL) get routed to "advisory" and answered.
     if intent_info.get("intent") == "refuse":
-        ticker = intent_info.get("ticker") or "this stock"
         msg = (
-            f"I can't recommend buying or selling specific securities. "
-            f"I can share factual information about {ticker} — would you like the "
-            f"latest price, recent news, or a summary of company info?\n\n"
-            f"_This is factual information service, not investment advice._"
+            "I'm an internal stock-market analyst tool — that question is "
+            "outside my scope. I can give you analyst-style views on Indian "
+            "equities (price, news, fundamentals, technicals, levels, "
+            "shareholding, institutional flows). What would you like?"
         )
-        # Stream the canned refusal as deltas so the UX matches a real reply.
         for chunk in _chunk(msg, size=20):
             yield {"type": "delta", "text": chunk}
         yield {
@@ -234,8 +235,9 @@ async def run_chat(
                 buffered,
                 tool_results=tool_results,
                 ticker_index=ticker_index,
+                mode=settings.guardrail_mode,
             )
-            yield {"type": "guardrail", **guarded.to_audit_dict()}
+            yield {"type": "guardrail", **guarded.to_audit_dict(), "mode": settings.guardrail_mode}
             yield {
                 "type": "done",
                 "message": guarded.final_text,
@@ -318,8 +320,9 @@ async def run_chat(
         buffered,
         tool_results=tool_results,
         ticker_index=ticker_index,
+        mode=settings.guardrail_mode,
     )
-    yield {"type": "guardrail", **guarded.to_audit_dict()}
+    yield {"type": "guardrail", **guarded.to_audit_dict(), "mode": settings.guardrail_mode}
     yield {
         "type": "done",
         "message": guarded.final_text,

@@ -210,16 +210,46 @@ class TestDisclaimerInjector:
 # ---------------------------------------------------------------------------
 
 class TestApplyGuardrails:
-    def test_blocklist_hit_overrides(self, reliance_index):
+    def test_blocklist_hit_overrides_in_strict_mode(self, reliance_index):
         text = "Reliance is great. You should buy Reliance now."
         out = apply_guardrails(
             text,
             tool_results={"price": "1436"},
             ticker_index=reliance_index,
+            mode="strict",
         )
         assert out.overridden is True
         assert "investment-advice territory" in out.final_text or "factual information" in out.final_text
         assert out.blocklist_hits  # at least one rule matched
+
+    def test_blocklist_hit_does_not_override_in_warn_mode(self, reliance_index):
+        """Phase-2 internal-tool default: blocklist hits stay in the audit
+        trail but the streamed text is preserved and the disclaimer still
+        gets injected."""
+        text = "Reliance is great. You should buy Reliance now."
+        out = apply_guardrails(
+            text,
+            tool_results={"price": "1436"},
+            ticker_index=reliance_index,
+            mode="warn",
+        )
+        assert out.overridden is False
+        # original analyst text is preserved (with disclaimer appended)
+        assert "should buy" in out.final_text.lower()
+        # but the audit trail records the rule hit
+        assert out.blocklist_hits and out.blocklist_hits[0].rule_id == "rec_buy"
+        assert out.disclaimer_injected is True
+
+    def test_warn_mode_is_default(self, reliance_index):
+        text = "Should I buy Reliance?"
+        out = apply_guardrails(
+            text,
+            tool_results={"price": "1436"},
+            ticker_index=reliance_index,
+        )
+        # With no mode= argument we default to "warn".
+        assert out.overridden is False
+        assert out.blocklist_hits  # still recorded for audit
 
     def test_clean_factual_passes_with_disclaimer(self, reliance_index):
         text = "Reliance is at ₹1436.10 with HIGH confidence across 4 sources."
