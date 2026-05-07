@@ -3,18 +3,37 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from redis import asyncio as aioredis
 
-from app.api import health
+from app.api import auth, chat, health, news, quote
 from app.config import get_settings
 
 log = structlog.get_logger()
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(app: FastAPI):
     settings = get_settings()
     log.info("startup", env=settings.env)
+
+    # Redis pool for the app's lifetime.
+    app.state.redis = aioredis.from_url(
+        settings.redis_url,
+        encoding="utf-8",
+        decode_responses=True,
+    )
+    try:
+        await app.state.redis.ping()
+        log.info("redis_connected", url=settings.redis_url)
+    except Exception as e:  # noqa: BLE001
+        log.warning("redis_ping_failed", error=str(e))
+
     yield
+
+    try:
+        await app.state.redis.aclose()
+    except Exception:  # noqa: BLE001
+        pass
     log.info("shutdown")
 
 
@@ -27,12 +46,16 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173"],
+        allow_origins=["http://localhost:5173", "http://localhost:5174"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
     app.include_router(health.router)
+    app.include_router(auth.router)
+    app.include_router(quote.router)
+    app.include_router(news.router)
+    app.include_router(chat.router)
     return app
 
 
