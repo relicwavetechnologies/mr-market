@@ -33,10 +33,25 @@ mr-market/
 ├── scripts/seed_universe.py
 ├── alembic.ini
 ├── pyproject.toml + uv.lock
-└── .env.example            copy to .env, fill in ANTHROPIC_API_KEY for D4
+└── .env.example            copy to .env, fill in OPENAI_API_KEY (or use codex login)
 ```
 
 ## One-time setup
+
+### OpenAI auth (pick one)
+
+The backend resolves credentials in this order on every request:
+**Redis (paste-key) → `OPENAI_API_KEY` env → `~/.codex/auth.json`**.
+
+| Path | Best for | How |
+|---|---|---|
+| **Codex login** (recommended) | Anyone with a ChatGPT Plus / Pro / Team subscription | `npm i -g @openai/codex` then `codex login` — opens a browser, signs in with your ChatGPT account, writes credentials to `~/.codex/auth.json`. The server picks them up automatically; refreshes are also picked up live. |
+| `.env` | Classic API-key billing | Edit `.env`: `OPENAI_API_KEY=sk-...` and restart the backend. |
+| Web paste | Quick demo / temporary | Open the chat page, click "paste key" in the auth banner, paste — stored in Redis with a 24h TTL. |
+
+`/auth/openai/status` exposes the active source so you can verify; the `AuthBanner` in the React UI does this automatically on every page load.
+
+### Local infra
 
 ```bash
 # 1. Services

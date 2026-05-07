@@ -14,9 +14,13 @@ class Settings(BaseSettings):
     sync_database_url: str = Field(...)
     redis_url: str = "redis://localhost:6379/0"
 
+    # OpenAI is the active LLM provider for Phase 1.
+    openai_api_key: str = ""
+    openai_model_work: str = "gpt-4o-mini"
+    openai_model_router: str = "gpt-4o-mini"
+
+    # Reserved for later swap (Anthropic / Gemini).
     anthropic_api_key: str = ""
-    anthropic_model_work: str = "claude-sonnet-4-5"
-    anthropic_model_router: str = "claude-haiku-4-5"
     gemini_api_key: str = ""
 
 
