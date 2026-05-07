@@ -24,8 +24,10 @@ from openai import AsyncOpenAI
 from redis import asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.analytics.ticker_ner import build_index
 from app.config import get_settings
 from app.llm.auth import AuthState, load_state
+from app.llm.guardrails import apply_guardrails
 from app.llm.intent import classify
 from app.llm.prompts import SYSTEM_PROMPT
 from app.llm.tools import TOOL_SPECS, dispatch, tool_result_to_json_string
@@ -90,6 +92,13 @@ async def run_chat(
     client = _client(auth.api_key)
     yield {"type": "auth", "source": auth.source}
 
+    # Build ticker index once for the disclaimer injector. Cheap (50 rows).
+    try:
+        ticker_index = await build_index(session)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("ticker_index build failed: %s", e)
+        ticker_index = None
+
     # --- Intent + ticker pre-extraction (cheap, single Haiku-style call) -------
     intent_info = await classify(client, user_message)
     yield {
@@ -110,6 +119,14 @@ async def run_chat(
         # Stream the canned refusal as deltas so the UX matches a real reply.
         for chunk in _chunk(msg, size=20):
             yield {"type": "delta", "text": chunk}
+        yield {
+            "type": "guardrail",
+            "overridden": False,
+            "blocklist_hits": [],
+            "claim_mismatches": [],
+            "disclaimer_injected": False,
+            "router_short_circuit": True,
+        }
         yield {
             "type": "done",
             "message": msg,
@@ -173,11 +190,18 @@ async def run_chat(
                     final_text_parts.append(delta)
                     yield {"type": "delta", "text": delta}
 
+            buffered = "".join(final_text_parts)
+            guarded = apply_guardrails(
+                buffered,
+                tool_results=tool_results,
+                ticker_index=ticker_index,
+            )
+            yield {"type": "guardrail", **guarded.to_audit_dict()}
             yield {
                 "type": "done",
-                "message": "".join(final_text_parts),
+                "message": guarded.final_text,
                 "tool_results": tool_results,
-                "blocked": False,
+                "blocked": guarded.overridden,
             }
             return
 
@@ -250,11 +274,18 @@ async def run_chat(
             final_text_parts.append(delta)
             yield {"type": "delta", "text": delta}
 
+    buffered = "".join(final_text_parts)
+    guarded = apply_guardrails(
+        buffered,
+        tool_results=tool_results,
+        ticker_index=ticker_index,
+    )
+    yield {"type": "guardrail", **guarded.to_audit_dict()}
     yield {
         "type": "done",
-        "message": "".join(final_text_parts),
+        "message": guarded.final_text,
         "tool_results": tool_results,
-        "blocked": False,
+        "blocked": guarded.overridden,
     }
 
 
