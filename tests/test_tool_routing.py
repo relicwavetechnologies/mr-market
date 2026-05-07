@@ -1,4 +1,4 @@
-"""Unit tests for the per-intent tool shortlist (D8).
+"""Unit tests for the per-intent tool shortlist (D8 + Phase-3 B-1 extension).
 
 The shortlist narrows the OpenAI tool catalog *before* the workhorse runs,
 so the LLM cannot pick a tool that's irrelevant to the routed intent.
@@ -41,7 +41,7 @@ def test_all_tools_matches_real_tool_catalog():
 
 
 # ---------------------------------------------------------------------------
-# shortlist_for
+# shortlist_for — Phase-1/2 intents
 # ---------------------------------------------------------------------------
 
 
@@ -50,7 +50,6 @@ class TestShortlistFor:
         assert shortlist_for("quote") == ("get_quote",)
 
     def test_news_intent_includes_quote_fallback(self):
-        # `news` lets the model also pull a price — common in "why is X moving" answers.
         out = shortlist_for("news")
         assert out is not None
         assert "get_news" in out
@@ -60,14 +59,12 @@ class TestShortlistFor:
         assert shortlist_for("research") == ("get_research",)
 
     def test_holding_does_not_include_quote(self):
-        # A holding question doesn't need a price — keep the catalog tight.
         out = shortlist_for("holding")
         assert out is not None
         assert "get_quote" not in out
         assert "get_holding" in out
 
     def test_advisory_returns_none_meaning_full_catalog(self):
-        # Advisory questions can legitimately want anything; don't narrow.
         assert shortlist_for("advisory") is None
 
     def test_education_returns_none(self):
@@ -82,6 +79,29 @@ class TestShortlistFor:
     def test_empty_intent_returns_none(self):
         assert shortlist_for("") is None
         assert shortlist_for(None) is None
+
+
+# ---------------------------------------------------------------------------
+# shortlist_for — Phase-3 intents (B-1)
+# ---------------------------------------------------------------------------
+
+
+class TestShortlistForPhase3:
+    def test_screener_intent_only_run_screener(self):
+        assert shortlist_for("screener") == ("run_screener",)
+
+    def test_portfolio_intent_only_analyse_portfolio(self):
+        assert shortlist_for("portfolio") == ("analyse_portfolio",)
+
+    def test_idea_intent_includes_screener_and_technicals(self):
+        out = shortlist_for("idea")
+        assert out is not None
+        assert "propose_ideas" in out
+        assert "run_screener" in out
+        assert "get_technicals" in out
+
+    def test_backtest_intent_only_backtest_screener(self):
+        assert shortlist_for("backtest") == ("backtest_screener",)
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +140,6 @@ class TestFilterToolSpecs:
 
     def test_advisory_intent_returns_full_catalog(self):
         out = filter_tool_specs(self.full, intent="advisory")
-        # No narrowing → identical list (same object, same length).
         assert out is self.full
         assert len(out) == len(ALL_TOOLS)
 
@@ -133,9 +152,6 @@ class TestFilterToolSpecs:
         assert len(out) == len(ALL_TOOLS)
 
     def test_filter_drops_unknown_specs_silently(self):
-        # If the tool catalog grows but routing isn't updated, we still
-        # filter cleanly: unknown specs are passed through when the intent
-        # has no shortlist, dropped when it does.
         with_extra = self.full + [_spec("get_zodiac_sign")]
         out = filter_tool_specs(with_extra, intent="quote")
         names = [s["function"]["name"] for s in out]
@@ -147,3 +163,24 @@ class TestFilterToolSpecs:
         before = len(self.full)
         filter_tool_specs(self.full, intent="quote")
         assert len(self.full) == before
+
+    # Phase-3 filter tests
+    def test_screener_intent_keeps_only_run_screener(self):
+        out = filter_tool_specs(self.full, intent="screener")
+        names = [s["function"]["name"] for s in out]
+        assert names == ["run_screener"]
+
+    def test_portfolio_intent_keeps_only_analyse_portfolio(self):
+        out = filter_tool_specs(self.full, intent="portfolio")
+        names = [s["function"]["name"] for s in out]
+        assert names == ["analyse_portfolio"]
+
+    def test_idea_intent_keeps_propose_ideas_screener_technicals(self):
+        out = filter_tool_specs(self.full, intent="idea")
+        names = {s["function"]["name"] for s in out}
+        assert names == {"propose_ideas", "run_screener", "get_technicals"}
+
+    def test_backtest_intent_keeps_only_backtest_screener(self):
+        out = filter_tool_specs(self.full, intent="backtest")
+        names = [s["function"]["name"] for s in out]
+        assert names == ["backtest_screener"]

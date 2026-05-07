@@ -40,6 +40,11 @@ ALL_TOOLS: tuple[str, ...] = (
     "get_holding",
     "get_deals",
     "get_research",
+    "run_screener",
+    "analyse_portfolio",
+    "propose_ideas",
+    "backtest_screener",
+    "add_to_watchlist",
     "remember_fact",
 )
 
@@ -54,6 +59,10 @@ SHORTLISTS: dict[str, tuple[str, ...]] = {
     "holding": ("get_holding", "get_deals"),
     "deals": ("get_deals", "get_holding"),
     "research": ("get_research",),
+    "screener": ("run_screener",),
+    "portfolio": ("analyse_portfolio",),
+    "idea": ("propose_ideas", "run_screener", "get_technicals"),
+    "backtest": ("backtest_screener",),
     # Advisory + education + other intentionally fall through to the
     # full catalog — these can legitimately want anything.
 }
