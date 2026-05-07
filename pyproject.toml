@@ -1,5 +1,5 @@
 [project]
-name = "mr-market"
+name = "midas"
 version = "0.1.0"
 description = "AI trading assistant — Phase 1 local demo"
 readme = "README.md"
@@ -7,10 +7,12 @@ requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.18.4",
     "anthropic>=0.100.0",
+    "argon2-cffi>=25.1.0",
     "arq>=0.28.0",
     "asyncpg>=0.31.0",
     "beautifulsoup4>=4.14.3",
     "curl-cffi>=0.15.0",
+    "email-validator>=2.3.0",
     "fastapi>=0.136.1",
     "feedparser>=6.0.12",
     "httpx>=0.28.1",
@@ -21,6 +23,7 @@ dependencies = [
     "pandas-ta-classic>=0.5.44",
     "pydantic>=2",
     "pydantic-settings>=2.14.0",
+    "pyjwt[crypto]>=2.12.1",
     "pypdf>=6.10.2",
     "python-dotenv>=1.2.2",
     "pyyaml>=6.0.3",

@@ -1,20 +1,22 @@
 import type { ChatStreamEvent } from '@/types';
+import { apiFetch } from './apiClient';
 
 interface StreamChatHandlers {
   onEvent: (event: ChatStreamEvent) => void;
   signal?: AbortSignal;
+  conversationId?: string | null;
 }
 
 export async function streamChat(
   message: string,
-  { onEvent, signal }: StreamChatHandlers,
+  { onEvent, signal, conversationId }: StreamChatHandlers,
 ): Promise<void> {
   let res: Response;
   try {
-    res = await fetch('/chat', {
+    res = await apiFetch('/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, conversation_id: conversationId ?? null }),
       signal,
     });
   } catch (err) {

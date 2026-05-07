@@ -5,7 +5,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from redis import asyncio as aioredis
 
-from app.api import auth, chat, deals, health, holding, levels, news, quote, research, technicals
+from app.api import (
+    auth,
+    chat,
+    chats,
+    deals,
+    health,
+    holding,
+    levels,
+    news,
+    quote,
+    research,
+    technicals,
+    users,
+)
 from app.config import get_settings
 
 log = structlog.get_logger()
@@ -39,7 +52,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="Mr. Market",
+        title="Midas",
         version="0.1.0",
         description="AI trading assistant — Phase 1 local demo",
         lifespan=lifespan,
@@ -53,6 +66,8 @@ def create_app() -> FastAPI:
     )
     app.include_router(health.router)
     app.include_router(auth.router)
+    app.include_router(users.router)
+    app.include_router(chats.router)
     app.include_router(quote.router)
     app.include_router(news.router)
     app.include_router(technicals.router)

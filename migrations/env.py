@@ -20,15 +20,18 @@ from app.config import get_settings
 from app.db.base import Base
 from app.db.models import (  # noqa: F401
     ChatAudit,
+    Conversation,
     Deal,
     Document,
     DocumentChunk,
     Holding,
+    Message,
     News,
     PriceDaily,
     ScrapeLog,
     Stock,
     Technicals,
+    User,
 )
 
 target_metadata = Base.metadata

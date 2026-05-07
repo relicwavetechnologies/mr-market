@@ -26,6 +26,8 @@ export function ChatPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+  const fetchConversation = useChatStore((s) => s.fetchConversation);
+  const storedMessages = useChatStore((s) => (id ? s.messages[id] : undefined));
   const { sendMessage, isGenerating } = useChat();
   const [activeTab, setActiveTab] = useState<string>('answer');
   const consumedInitialFor = useRef<string | null>(null);
@@ -33,8 +35,11 @@ export function ChatPage() {
   useEffect(() => {
     if (id) {
       setActiveConversation(id);
+      if (!storedMessages || storedMessages.length === 0) {
+        void fetchConversation(id).catch(() => undefined);
+      }
     }
-  }, [id, setActiveConversation]);
+  }, [id, setActiveConversation, fetchConversation, storedMessages]);
 
   useEffect(() => {
     const state = location.state as { initialQuery?: string } | null;

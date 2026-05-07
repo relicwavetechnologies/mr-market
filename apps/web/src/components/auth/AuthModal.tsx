@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Mail } from 'lucide-react';
+import { Apple, Loader2, Lock, Mail, UserRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -9,39 +9,64 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuthStore } from '@/stores/authStore';
 
+type Mode = 'login' | 'signup';
+
 export function AuthModal() {
+  const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [password, setPassword] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const login = useAuthStore((s) => s.login);
-  const loginWithGoogle = useAuthStore((s) => s.loginWithGoogle);
+  const signup = useAuthStore((s) => s.signup);
   const showAuthModal = useAuthStore((s) => s.showAuthModal);
   const setShowAuthModal = useAuthStore((s) => s.setShowAuthModal);
+  const authError = useAuthStore((s) => s.authError);
 
-  const handleEmailLogin = async () => {
-    if (!email.trim()) return;
-    await login(email.trim(), '');
+  const handleSubmit = async () => {
+    const trimmedEmail = email.trim();
+    const trimmedName = displayName.trim();
+    if (!trimmedEmail || !password || (mode === 'signup' && !trimmedName)) return;
+    setSubmitting(true);
+    setLocalError(null);
+    try {
+      if (mode === 'signup') await signup(trimmedEmail, password, trimmedName);
+      else await login(trimmedEmail, password);
+      setEmail('');
+      setDisplayName('');
+      setPassword('');
+    } catch (err) {
+      setLocalError((err as Error).message || 'Authentication failed');
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  const submitDisabled =
+    submitting || !email.trim() || !password || (mode === 'signup' && !displayName.trim());
 
   return (
     <Dialog open={showAuthModal} onOpenChange={setShowAuthModal}>
       <DialogContent className="max-w-md gap-0 border-border/80 bg-card p-7 sm:rounded-2xl">
         <DialogHeader className="space-y-2 text-center">
           <DialogTitle className="text-center font-serif text-2xl font-normal leading-tight tracking-tight">
-            Sign up to unlock the full
-            <br />
-            potential of Mr. Market
+            Sign in to Midas
           </DialogTitle>
           <DialogDescription className="text-center text-xs text-muted-foreground">
-            By continuing, you agree to our privacy policy.
+            Keep your research history available across sessions.
           </DialogDescription>
         </DialogHeader>
 
         <div className="mt-6 space-y-2.5">
           <Button
             variant="outline"
-            onClick={loginWithGoogle}
-            className="h-11 w-full justify-center gap-3 rounded-xl border-border/80 bg-secondary/40 text-sm font-medium hover:bg-accent"
+            disabled
+            className="h-11 w-full justify-center gap-3 rounded-xl border-border/80 bg-secondary/40 text-sm font-medium"
+            title="Coming soon"
           >
             <svg viewBox="0 0 24 24" className="size-4">
               <path
@@ -66,12 +91,11 @@ export function AuthModal() {
 
           <Button
             variant="outline"
-            onClick={() => login('user@apple.com', '')}
-            className="h-11 w-full justify-center gap-3 rounded-xl border-border/80 bg-secondary/40 text-sm font-medium hover:bg-accent"
+            disabled
+            className="h-11 w-full justify-center gap-3 rounded-xl border-border/80 bg-secondary/40 text-sm font-medium"
+            title="Coming soon"
           >
-            <svg viewBox="0 0 24 24" className="size-4 fill-foreground">
-              <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
-            </svg>
+            <Apple className="size-4" />
             Continue with Apple
           </Button>
         </div>
@@ -82,24 +106,65 @@ export function AuthModal() {
           <Separator className="flex-1 bg-border/60" />
         </div>
 
+        <Tabs value={mode} onValueChange={(value) => setMode(value as Mode)}>
+          <TabsList className="mb-4 grid h-9 grid-cols-2 rounded-xl bg-secondary/50 p-1">
+            <TabsTrigger value="login" className="rounded-lg text-xs">
+              Login
+            </TabsTrigger>
+            <TabsTrigger value="signup" className="rounded-lg text-xs">
+              Sign up
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+
         <div className="space-y-2.5">
+          {mode === 'signup' && (
+            <div className="relative">
+              <UserRound className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Display name"
+                className="h-11 w-full rounded-xl border border-border/80 bg-secondary/40 pl-10 pr-3 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-foreground/40"
+              />
+            </div>
+          )}
           <div className="relative">
             <Mail className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleEmailLogin()}
-              placeholder="Enter your email"
+              placeholder="Email"
+              autoComplete="email"
               className="h-11 w-full rounded-xl border border-border/80 bg-secondary/40 pl-10 pr-3 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-foreground/40"
             />
           </div>
+          <div className="relative">
+            <Lock className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && void handleSubmit()}
+              placeholder="Password"
+              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+              className="h-11 w-full rounded-xl border border-border/80 bg-secondary/40 pl-10 pr-3 text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-foreground/40"
+            />
+          </div>
+          {(localError || authError) && (
+            <p className="rounded-lg border border-accent-red/30 bg-accent-red/5 px-3 py-2 text-xs text-accent-red">
+              {localError || authError}
+            </p>
+          )}
           <Button
-            onClick={handleEmailLogin}
-            disabled={!email.trim()}
+            onClick={handleSubmit}
+            disabled={submitDisabled}
             className="h-11 w-full rounded-xl bg-foreground text-sm font-medium text-background hover:bg-foreground/90"
           >
-            Continue with email
+            {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+            {mode === 'signup' ? 'Create account' : 'Login'}
           </Button>
         </div>
       </DialogContent>

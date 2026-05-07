@@ -64,7 +64,7 @@ function AssistantMessage({ message }: { message: Message }) {
         <div className="flex items-start gap-2 rounded-lg border border-accent-red/40 bg-accent-red/5 px-3 py-2.5">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-accent-red" />
           <p className="text-[12px] leading-relaxed text-foreground">
-            This question crosses the SEBI advice line. Mr. Market refused as
+            This question crosses the SEBI advice line. Midas refused as
             designed — try asking for facts (price, news, fundamentals) instead.
           </p>
         </div>

@@ -21,7 +21,7 @@ export function HomePage() {
       <div className="flex flex-1 flex-col items-center justify-center px-6 pb-32 pt-16">
         <div className="w-full max-w-[720px]">
           <h1 className="mb-8 text-center font-serif text-[68px] font-normal leading-none tracking-[-0.03em] text-foreground sm:text-[80px]">
-            Mr. Market
+            Midas
           </h1>
 
           <div className="mb-4">

@@ -1,8 +1,8 @@
-# Mr. Market — Phase 1 Build Plan ("Informed Bot")
+# Midas — Phase 1 Build Plan ("Informed Bot")
 
 **Status:** Draft v1 · **Owner:** Abhishek · **Window:** Weeks 1–4 · **Date:** 2026-05-07
 
-This document is the deeply-researched, opinionated build plan for Phase 1 of Mr. Market. It is based on the original PDF + targeted research on (a) NSE/BSE scraping reality in 2026, (b) the LLM/AI landscape in 2026, (c) SEBI compliance, and (d) infra-stack picks. **Where I deviate from the PDF I call it out explicitly** so you can push back.
+This document is the deeply-researched, opinionated build plan for Phase 1 of Midas. It is based on the original PDF + targeted research on (a) NSE/BSE scraping reality in 2026, (b) the LLM/AI landscape in 2026, (c) SEBI compliance, and (d) infra-stack picks. **Where I deviate from the PDF I call it out explicitly** so you can push back.
 
 ---
 
@@ -222,7 +222,7 @@ At ~1k queries/day with ~10K-token system+context prefix, uncached input cost do
 Smaller than the PDF's layout, because Phase 1 doesn't need analytics/RAG modules yet.
 
 ```
-mr-market/
+midas/
 ├── README.md
 ├── pyproject.toml          # uv-managed
 ├── uv.lock
@@ -417,7 +417,7 @@ CREATE INDEX ix_chat_audit_user_ts ON chat_audit(user_id, ts DESC);
 ## 7. The LLM/Agent Design
 
 ### 7.1 Cached system prefix (Anthropic prompt cache, 1h TTL)
-- **Block A — System prompt** (~2K tokens): Mr. Market personality, scope, refusal patterns, blocklist rules, disclaimer rules. Frozen at deploy time.
+- **Block A — System prompt** (~2K tokens): Midas personality, scope, refusal patterns, blocklist rules, disclaimer rules. Frozen at deploy time.
 - **Block B — Tool definitions** (~2K tokens): JSON schemas for `get_quote`, `get_news`, `get_company_info`, `get_index_level`.
 - **Block C — Static market context** (~3K tokens): list of top-500 ticker→name→sector mapping, holiday calendar, market hours.
 - **Suffix (uncached)**: user query + tool results.
@@ -450,7 +450,7 @@ All tools return **structured JSON with explicit timestamps and source**, never 
 
 ### 7.5 Master + inline disclaimers (always-on)
 **Master (every screen, fixed footer):**
-> The information provided by Mr. Market is for general informational and educational purposes only and does not constitute investment advice, a recommendation to buy or sell any security, or a solicitation. Mr. Market is not a SEBI-registered Investment Adviser or Research Analyst. Investments in securities are subject to market risks. Past performance is not indicative of future results. Please consult a SEBI-registered Investment Adviser before making any investment decision.
+> The information provided by Midas is for general informational and educational purposes only and does not constitute investment advice, a recommendation to buy or sell any security, or a solicitation. Midas is not a SEBI-registered Investment Adviser or Research Analyst. Investments in securities are subject to market risks. Past performance is not indicative of future results. Please consult a SEBI-registered Investment Adviser before making any investment decision.
 
 **Inline (auto-appended whenever a ticker is named):**
 > This is factual market information, not a recommendation.
@@ -515,7 +515,7 @@ This is the actual day-by-day schedule for Phase 1. It folds the PDF's Days 1–
 - **D13**: chat_audit logging on every turn. Build a tiny `/admin/audits` read-only endpoint (basic-auth) for review.
 - **D14**: Streamlit (or simple HTML/htmx) chat UI for internal testing. Deploy preview to staging VPS.
 
-**Exit Week 2:** Internal team can chat with Mr. Market. The 4 tools work. Disclaimers + blocklist tested.
+**Exit Week 2:** Internal team can chat with Midas. The 4 tools work. Disclaimers + blocklist tested.
 
 ### Week 3 — Hardening, evals, broker OAuth
 - **D15**: Build the **golden eval set** — 50 hand-crafted queries with expected behavior labels (`{should_quote, should_refuse, should_explain, should_link_news}`). Add `scripts/eval_run.py`.

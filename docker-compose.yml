@@ -1,4 +1,4 @@
-# Mr. Market — local stack.
+# Midas — local stack.
 #   docker compose up      → starts everything in foreground with colored logs (Ctrl+C stops)
 #   docker compose up -d   → detached
 #   docker compose down    → stop + remove containers (data persists in named volumes)
@@ -52,6 +52,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL_WORK: ${OPENAI_MODEL_WORK:-gpt-4o-mini}
       OPENAI_MODEL_ROUTER: ${OPENAI_MODEL_ROUTER:-gpt-4o-mini}
+      JWT_SECRET: ${JWT_SECRET:-dev-insecure-change-me-32-bytes-minimum}
+      JWT_ACCESS_TTL_MIN: ${JWT_ACCESS_TTL_MIN:-15}
+      JWT_REFRESH_TTL_DAYS: ${JWT_REFRESH_TTL_DAYS:-30}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}

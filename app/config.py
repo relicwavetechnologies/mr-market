@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     openai_model_work: str = "gpt-4o-mini"
     openai_model_router: str = "gpt-4o-mini"
 
+    # Demo auth. Override JWT_SECRET outside local development.
+    jwt_secret: str = "dev-insecure-change-me-32-bytes-minimum"
+    jwt_access_ttl_min: int = 15
+    jwt_refresh_ttl_days: int = 30
+
     # Guardrail mode — Phase-2 default is "warn" (internal tool: blocklist
     # hits are logged + UI banner is shown, but the streamed answer is NOT
     # overridden). Set GUARDRAIL_MODE=strict to revert to Phase-1 behaviour.

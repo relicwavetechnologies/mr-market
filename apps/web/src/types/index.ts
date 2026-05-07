@@ -30,6 +30,7 @@ export interface Conversation {
   id: string;
   title: string;
   lastMessage: string;
+  createdAt?: Date;
   updatedAt: Date;
 }
 
@@ -52,6 +53,7 @@ export interface AuthStatus {
 
 export type ChatStreamEvent =
   | { type: 'auth'; source: string }
+  | { type: 'conversation'; conversation_id: string }
   | { type: 'intent'; intent: string | null; ticker: string | null }
   | { type: 'tool_call'; name: string; args: Record<string, unknown> }
   | {
