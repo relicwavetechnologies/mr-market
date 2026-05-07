@@ -278,4 +278,4 @@ class TestMigration:
             revision,
         )
         assert revision == "a3b7c2d1e4f6"
-        assert down_revision == "f5741afc4c98"
+        assert down_revision == "c1f4a12c9d3b"

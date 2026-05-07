@@ -72,7 +72,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
-        void usersApi.logout().catch(() => undefined);
+        const token = useAuthStore.getState().accessToken;
         set({
           user: null,
           accessToken: null,
@@ -81,6 +81,12 @@ export const useAuthStore = create<AuthState>()(
           authError: null,
         });
         useChatStore.getState().clearAll();
+        if (token) {
+          fetch('/api/users/logout', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+          }).catch(() => undefined);
+        }
       },
 
       setShowAuthModal: (show: boolean) => {
