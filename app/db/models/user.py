@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, String, Text, func
+from sqlalchemy import CheckConstraint, DateTime, String, Text, func
 from sqlalchemy.dialects.postgresql import CITEXT, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,6 +27,18 @@ class User(Base):
         nullable=False,
     )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    risk_profile: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default="balanced",
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "risk_profile IN ('conservative', 'balanced', 'aggressive')",
+            name="ck_users_risk_profile",
+        ),
+    )
 
     conversations = relationship(
         "Conversation",
