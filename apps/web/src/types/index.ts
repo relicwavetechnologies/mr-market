@@ -4,12 +4,82 @@ export interface Source {
   domain?: string;
 }
 
+export type ToolName =
+  | 'get_quote'
+  | 'get_news'
+  | 'get_company_info'
+  | 'get_technicals'
+  | 'get_levels'
+  | 'get_holding'
+  | 'get_deals'
+  | 'get_research';
+
 export interface ToolEvent {
-  name: 'get_quote' | 'get_news' | 'get_company_info' | string;
+  name: ToolName | string;
   status: 'running' | 'done' | 'error';
   args?: Record<string, unknown>;
   summary?: Record<string, unknown>;
   ms?: number;
+}
+
+// ----- Tool-summary shapes (mirror app/llm/orchestrator.py::_summarise) -----
+// All numeric fields are stringified (Decimal serialization) on the wire;
+// renderers should call `Number(x)` or display verbatim.
+
+export interface TechnicalsSummary {
+  ticker?: string;
+  available?: boolean;
+  as_of?: string;
+  close?: string;
+  rsi_14?: string;
+  rsi_zone?: 'overbought' | 'oversold' | 'neutral';
+  macd?: string;
+  macd_signal?: string;
+  macd_above_signal?: boolean;
+  sma_50?: string;
+  sma_200?: string;
+  above_sma50?: boolean;
+  above_sma200?: boolean;
+  atr_14?: string;
+}
+
+export interface HoldingSummary {
+  ticker?: string;
+  available?: boolean;
+  latest_quarter?: string;
+  promoter_pct?: string;
+  public_pct?: string;
+  employee_trust_pct?: string;
+  pledged_pct?: string;
+  pledge_risk_band?: 'low' | 'moderate' | 'elevated' | 'high' | 'unknown';
+  xbrl_url?: string | null;
+  n_quarters?: number;
+}
+
+export interface DealsSummary {
+  ticker?: string;
+  available?: boolean;
+  kind?: 'bulk' | 'block' | 'any';
+  n_deals?: number;
+  n_buys?: number;
+  n_sells?: number;
+  net_qty?: number;
+}
+
+export interface ResearchHit {
+  document_title?: string;
+  document_fy?: string;
+  page?: number;
+  score?: number;
+}
+
+export interface ResearchSummary {
+  ticker?: string;
+  available?: boolean;
+  n_hits?: number;
+  top_score?: number;
+  top_hits?: ResearchHit[];
+  documents?: [string | null, string | null][];
 }
 
 export interface Message {

@@ -2,6 +2,7 @@ import { Check, Loader2, AlertTriangle } from 'lucide-react';
 import type { Message, ToolEvent } from '@/types';
 import { Disclaimer } from '@/components/common/Disclaimer';
 import { parseMarkdown } from '@/utils/parseMarkdown';
+import { ToolCards } from './ToolCards';
 
 interface MessageBubbleProps {
   message: Message;
@@ -58,6 +59,10 @@ function AssistantMessage({ message }: { message: Message }) {
             <span className="cursor-blink ml-0.5 text-accent-blue">▍</span>
           )}
         </div>
+      )}
+
+      {!isStreaming && hasContent && !blocked && toolEvents.length > 0 && (
+        <ToolCards events={toolEvents} />
       )}
 
       {blocked && (
