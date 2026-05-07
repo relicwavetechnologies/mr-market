@@ -96,6 +96,16 @@ def _summarise(name: str, payload: dict[str, Any]) -> dict[str, Any]:
             "public_pct": latest.get("public_pct"),
             "n_quarters": len(payload.get("series") or []),
         }
+    if name == "get_deals":
+        return {
+            "ticker": payload.get("ticker"),
+            "available": payload.get("available"),
+            "kind": payload.get("kind"),
+            "n_deals": payload.get("n_deals"),
+            "n_buys": payload.get("n_buys"),
+            "n_sells": payload.get("n_sells"),
+            "net_qty": payload.get("net_qty"),
+        }
     return {"raw_keys": list(payload.keys())}
 
 
