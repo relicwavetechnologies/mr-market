@@ -1,0 +1,22 @@
+[project]
+name = "mr-market"
+version = "0.1.0"
+description = "Mr. Market — AI-powered trading assistant"
+requires-python = ">=3.12"
+
+[tool.uv.workspace]
+members = ["apps/api", "workers", "packages/shared"]
+
+[tool.uv.sources]
+mr-market-shared = { workspace = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["apps/api/tests", "workers/tests"]
+asyncio_mode = "auto"
