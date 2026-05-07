@@ -27,6 +27,8 @@ from app.db.models.deal import Deal
 from app.db.models.holding import Holding
 from app.db.models.price import PriceDaily
 from app.db.models.technicals import Technicals
+from app.llm.auth import load_state
+from app.llm.memory import memory_service
 
 
 TOOL_SPECS: list[dict[str, Any]] = [
@@ -245,6 +247,29 @@ TOOL_SPECS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "remember_fact",
+            "description": (
+                "Persist a durable personalization fact about the signed-in user. "
+                "Use only for stable preferences such as sectors they track, "
+                "watchlists, risk tolerance, holding horizon, or preferred analyst "
+                "style. Do not store transient ticker mentions, tool data, prices, "
+                "news, greetings, or anything from a refusal."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fact": {
+                        "type": "string",
+                        "description": "A short first-person durable fact, e.g. 'User prefers dividend payers'.",
+                    },
+                },
+                "required": ["fact"],
+            },
+        },
+    },
 ]
 
 
@@ -254,6 +279,7 @@ async def dispatch(
     *,
     session: AsyncSession,
     redis: aioredis.Redis,
+    user_id: str | None = None,
 ) -> dict[str, Any]:
     """Run one tool by name. Always returns a JSON-serialisable dict."""
     if name == "get_quote":
@@ -292,6 +318,22 @@ async def dispatch(
             query=str(args["query"]),
             top_k=int(args.get("top_k") or 5),
         )
+    if name == "remember_fact":
+        fact = str(args.get("fact") or "").strip()
+        if not user_id:
+            return {"stored": False, "error": "memory requires a signed-in user"}
+        if not fact:
+            return {"stored": False, "error": "fact is required"}
+        auth = await load_state(redis)
+        saved = await memory_service.add_explicit(
+            user_id,
+            fact,
+            api_key=auth.api_key if auth.configured else None,
+            redis=redis,
+        )
+        if saved is None:
+            return {"stored": False, "fact": fact, "error": "memory save failed"}
+        return {"stored": True, "fact": fact}
     return {"error": f"unknown tool: {name}"}
 
 

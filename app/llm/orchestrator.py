@@ -31,26 +31,39 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any
 
+import structlog
 from openai import AsyncOpenAI
 from redis import asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.analytics.ticker_ner import build_index
 from app.config import get_settings
-from app.llm.auth import AuthState, load_state
+from app.llm.auth import AuthState, effective_models, load_state
+from app.llm.codex_client import CodexOpenAIClient
 from app.llm.guardrails import apply_guardrails
 from app.llm.intent import classify
+from app.llm.memory import (
+    MemoryHit,
+    build_memory_block,
+    build_memory_recall_answer,
+    looks_like_memory_recall_query,
+    memory_service,
+)
 from app.llm.prompts import SYSTEM_PROMPT
 from app.llm.tool_routing import filter_tool_specs
 from app.llm.tools import TOOL_SPECS, dispatch, tool_result_to_json_string
 
 logger = logging.getLogger(__name__)
+event_log = structlog.get_logger(__name__)
 
 MAX_TOOL_ROUNDS = 3
+MEMORY_TOOL_NAME = "remember_fact"
 
 
-def _client(api_key: str) -> AsyncOpenAI:
-    return AsyncOpenAI(api_key=api_key)
+def _client(auth: AuthState) -> Any:
+    if auth.source in {"codex_oauth", "codex_cli"}:
+        return CodexOpenAIClient(auth.api_key or "")
+    return AsyncOpenAI(api_key=auth.api_key)
 
 
 def _summarise(name: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -179,7 +192,23 @@ def _summarise(name: str, payload: dict[str, Any]) -> dict[str, Any]:
             "top_hits": top_hits,
             "documents": documents,
         }
+    if name == "remember_fact":
+        return {
+            "stored": payload.get("stored"),
+            "fact": payload.get("fact"),
+            "error": payload.get("error"),
+        }
     return {"raw_keys": list(payload.keys())}
+
+
+def _tool_specs_for_turn(*, memory_available: bool) -> list[dict[str, Any]]:
+    if memory_available:
+        return TOOL_SPECS
+    return [
+        spec
+        for spec in TOOL_SPECS
+        if spec.get("function", {}).get("name") != MEMORY_TOOL_NAME
+    ]
 
 
 async def run_chat(
@@ -187,22 +216,105 @@ async def run_chat(
     *,
     session: AsyncSession,
     redis: aioredis.Redis,
+    user_id: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     settings = get_settings()
     auth: AuthState = await load_state(redis)
+    models = effective_models(auth, settings)
     if not auth.configured or auth.api_key is None:
         yield {
             "type": "error",
             "message": (
-                "No OpenAI credential found. Either set OPENAI_API_KEY in .env, "
-                "run `codex login` (we read ~/.codex/auth.json), or POST your key "
-                "to /auth/openai/key."
+                "Codex is not connected. Connect OpenAI in the header to use "
+                "GPT-5.4 mini. To use GPT-4o mini fallback, set the backend "
+                "OPENAI_API_KEY or paste the key in the header fallback field."
             ),
         }
         return
 
-    client = _client(auth.api_key)
-    yield {"type": "auth", "source": auth.source}
+    client = _client(auth)
+    yield {
+        "type": "auth",
+        "source": auth.source,
+        "model": models.work,
+        "using_fallback": models.using_fallback,
+        "message": models.fallback_reason,
+    }
+
+    handled = await _handle_memory_command(
+        user_message,
+        user_id=user_id,
+        api_key=auth.api_key,
+        redis=redis,
+    )
+    if handled is not None:
+        for chunk in _chunk(handled, size=20):
+            yield {"type": "delta", "text": chunk}
+        yield {
+            "type": "done",
+            "message": handled,
+            "tool_results": {},
+            "blocked": False,
+        }
+        return
+
+    memory_query = looks_like_memory_recall_query(user_message)
+    memory_reason = memory_service.availability_reason(
+        settings,
+        api_key=auth.api_key,
+        user_id=user_id,
+    )
+    memory_summary: dict[str, Any] | None = None
+    recalled_memories: list[MemoryHit] = []
+
+    if memory_reason is None and user_id is not None:
+        memory_summary = await memory_service.get_summary(
+            user_id,
+            redis=redis,
+            api_key=auth.api_key,
+        )
+        if memory_query:
+            recalled_memories = await memory_service.search(
+                user_id,
+                user_message,
+                api_key=auth.api_key,
+                redis=redis,
+                use_cache=True,
+                k=settings.mem0_max_inject,
+                min_score=settings.mem0_min_score,
+            )
+
+    memory_status = _memory_status_payload(
+        query_is_memory=memory_query,
+        summary=memory_summary,
+        hits=recalled_memories,
+        unavailable_reason=memory_reason,
+    )
+    if memory_status is not None:
+        yield {"type": "memory_status", **memory_status}
+
+    if recalled_memories:
+        yield {
+            "type": "memory",
+            "count": len(recalled_memories),
+            "facts": [hit.text for hit in recalled_memories],
+        }
+
+    if memory_query:
+        direct = build_memory_recall_answer(
+            memory_summary,
+            recalled_memories,
+            unavailable_reason=memory_reason,
+        )
+        for chunk in _chunk(direct, size=20):
+            yield {"type": "delta", "text": chunk}
+        yield {
+            "type": "done",
+            "message": direct,
+            "tool_results": {},
+            "blocked": False,
+        }
+        return
 
     # Build ticker index once for the disclaimer injector. Cheap (50 rows).
     try:
@@ -212,7 +324,7 @@ async def run_chat(
         ticker_index = None
 
     # --- Intent + ticker pre-extraction (cheap, single Haiku-style call) -------
-    intent_info = await classify(client, user_message)
+    intent_info = await classify(client, user_message, model=models.router)
     yield {
         "type": "intent",
         "intent": intent_info.get("intent"),
@@ -249,16 +361,37 @@ async def run_chat(
         return
 
     # --- Main tool-calling loop -----------------------------------------------
-    messages: list[dict[str, Any]] = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": user_message},
-    ]
+    messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if memory_summary is not None or recalled_memories:
+        messages.append(
+            {
+                "role": "system",
+                "content": build_memory_block(memory_summary, recalled_memories),
+            }
+        )
+    memory_available = memory_reason is None and user_id is not None
+    tool_specs = _tool_specs_for_turn(memory_available=memory_available)
+    if not memory_available:
+        event_log.info(
+            "remember_fact_tool_disabled",
+            reason=memory_reason or "anonymous",
+            signed_in=user_id is not None,
+        )
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    "Durable memory saving is unavailable for this turn. If the user "
+                    "states a preference, acknowledge it for the current conversation "
+                    "only and do not claim it was saved."
+                ),
+            }
+        )
+    messages.append({"role": "user", "content": user_message})
 
     # Narrow the tool catalog based on the router's intent — fewer tools
     # surfaced to the workhorse means fewer over-fires per turn (D8).
-    active_tools = filter_tool_specs(
-        TOOL_SPECS, intent=intent_info.get("intent")
-    )
+    active_tools = filter_tool_specs(tool_specs, intent=intent_info.get("intent"))
 
     final_text_parts: list[str] = []
     tool_results: dict[str, dict[str, Any]] = {}
@@ -270,7 +403,7 @@ async def run_chat(
         # adds chunk-assembly complexity we don't need for a demo.
         try:
             resp = await client.chat.completions.create(
-                model=settings.openai_model_work,
+                model=models.work,
                 temperature=0.2,
                 max_tokens=600,
                 tools=active_tools,
@@ -302,7 +435,11 @@ async def run_chat(
                 ticker_index=ticker_index,
                 mode=settings.guardrail_mode,
             )
-            yield {"type": "guardrail", **guarded.to_audit_dict(), "mode": settings.guardrail_mode}
+            yield {
+                "type": "guardrail",
+                **guarded.to_audit_dict(),
+                "mode": settings.guardrail_mode,
+            }
             yield {
                 "type": "done",
                 "message": guarded.final_text,
@@ -350,7 +487,9 @@ async def run_chat(
         async def _run_one(name: str, args: dict[str, Any]) -> tuple[dict[str, Any], int]:
             t0 = time.perf_counter()
             try:
-                result = await dispatch(name, args, session=session, redis=redis)
+                result = await dispatch(
+                    name, args, session=session, redis=redis, user_id=user_id
+                )
             except Exception as e:  # noqa: BLE001
                 result = {"error": str(e)}
             return result, int((time.perf_counter() - t0) * 1000)
@@ -374,12 +513,35 @@ async def run_chat(
                     "content": tool_result_to_json_string(result),
                 }
             )
+
+            if name == "remember_fact":
+                if result.get("stored") is True:
+                    messages.append(
+                        {
+                            "role": "system",
+                            "content": (
+                                "The memory save succeeded. Briefly confirm the saved preference "
+                                "without mentioning hidden tools."
+                            ),
+                        }
+                    )
+                else:
+                    error = str(result.get("error") or "memory save failed")
+                    messages.append(
+                        {
+                            "role": "system",
+                            "content": (
+                                "The memory save failed. You must tell the user it could not be "
+                                f"saved. Reason: {error}. Do not imply success."
+                            ),
+                        }
+                    )
         # Loop continues: model may want more tools or now compose the final answer.
 
     # If we exhausted tool rounds without a final answer, ask once more without tools.
     try:
         stream = await client.chat.completions.create(
-            model=settings.openai_model_work,
+            model=models.work,
             temperature=0.2,
             max_tokens=600,
             messages=messages,
@@ -402,7 +564,11 @@ async def run_chat(
         ticker_index=ticker_index,
         mode=settings.guardrail_mode,
     )
-    yield {"type": "guardrail", **guarded.to_audit_dict(), "mode": settings.guardrail_mode}
+    yield {
+        "type": "guardrail",
+        **guarded.to_audit_dict(),
+        "mode": settings.guardrail_mode,
+    }
     yield {
         "type": "done",
         "message": guarded.final_text,
@@ -425,3 +591,100 @@ def _safe_json(s: str) -> dict[str, Any]:
 
 def _chunk(text: str, *, size: int) -> list[str]:
     return [text[i : i + size] for i in range(0, len(text), size)]
+
+
+async def _handle_memory_command(
+    user_message: str,
+    *,
+    user_id: str | None,
+    api_key: str | None,
+    redis: aioredis.Redis,
+) -> str | None:
+    text = user_message.strip()
+    lowered = text.lower()
+    if not lowered.startswith(("/remember", "/forget", "/memories")):
+        return None
+
+    if not user_id:
+        return "Sign in to use Midas memory commands."
+    settings = get_settings()
+    if not settings.mem0_enabled:
+        return "Midas memory is disabled in this environment."
+
+    if lowered.startswith("/remember"):
+        fact = text[len("/remember") :].strip()
+        if not fact:
+            return "Usage: /remember <durable preference or fact>"
+        saved = await memory_service.add_explicit(
+            user_id, fact, api_key=api_key, redis=redis
+        )
+        if saved is None:
+            return "I could not save that memory right now."
+        return f"Got it - I'll remember: {fact}"
+
+    if lowered.startswith("/forget"):
+        query = text[len("/forget") :].strip()
+        if not query:
+            return "Usage: /forget <memory to remove>"
+        hits = await memory_service.search(
+            user_id, query, api_key=api_key, k=1, min_score=0.0
+        )
+        if not hits:
+            return "I could not find a matching memory to forget."
+        deleted = await memory_service.delete(
+            user_id, hits[0].id, api_key=api_key, redis=redis
+        )
+        if not deleted:
+            return "I found a matching memory, but could not delete it right now."
+        return f"Done - I've forgotten: {hits[0].text}"
+
+    memories: list[MemoryHit] = await memory_service.list(
+        user_id, api_key=api_key, limit=50
+    )
+    if not memories:
+        return "No saved Midas memories yet."
+    rendered = "\n".join(f"- {hit.text}" for hit in memories)
+    return f"Saved Midas memories:\n{rendered}"
+
+
+def _memory_status_payload(
+    *,
+    query_is_memory: bool,
+    summary: dict[str, Any] | None,
+    hits: list[MemoryHit],
+    unavailable_reason: str | None,
+) -> dict[str, Any] | None:
+    if unavailable_reason is not None:
+        if query_is_memory:
+            return {
+                "status": "unavailable",
+                "reason": unavailable_reason,
+                "source": "none",
+                "summary_version": None,
+            }
+        return None
+
+    used_summary = summary is not None
+    used_search = bool(hits)
+    if not used_summary and not used_search and not query_is_memory:
+        return None
+
+    if used_summary and used_search:
+        source = "summary+search"
+    elif used_summary:
+        source = "summary"
+    elif used_search:
+        source = "search"
+    else:
+        source = "none"
+
+    return {
+        "status": "used" if (used_summary or used_search) else "miss",
+        "reason": None if (used_summary or used_search) else "no_relevant_memory",
+        "source": source,
+        "summary_version": int((summary or {}).get("version") or 0)
+        if used_summary
+        else None,
+        "facts_count": len((summary or {}).get("facts") or []),
+        "hits_count": len(hits),
+    }

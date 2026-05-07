@@ -3,13 +3,19 @@ import type { Source } from '@/types';
 import { CitationBadge } from '@/components/chat/CitationBadge';
 
 /**
- * Parses inline content for [N] citation markers, **bold** text, and plain text.
- * Returns an array of React nodes.
+ * Parses inline content. Recognises:
+ *   - `**bold**`
+ *   - `*italic*`  /  `_italic_`
+ *   - `` `code` ``
+ *   - `[N]` citation markers
+ *
+ * Order matters: bold (`**...**`) MUST be tested before italic (`*...*`)
+ * because both share the asterisk character; alternation is left-to-right.
  */
 function parseInline(text: string, sources: Source[]): ReactNode[] {
   const nodes: ReactNode[] = [];
-  // Match either **bold** or [N] citations
-  const regex = /(\*\*[^*]+\*\*)|(\[(\d+)\])/g;
+  const regex =
+    /(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(_[^_\n]+_)|(`[^`\n]+`)|(\[(\d+)\])/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
   let key = 0;
@@ -21,35 +27,33 @@ function parseInline(text: string, sources: Source[]): ReactNode[] {
 
     if (match[1]) {
       // Bold
-      const inner = match[1].slice(2, -2);
       nodes.push(
         <strong key={`b-${key++}`} className="font-semibold text-foreground">
-          {inner}
-        </strong>
+          {match[1].slice(2, -2)}
+        </strong>,
       );
     } else if (match[2]) {
+      // *italic*
+      nodes.push(<em key={`i-${key++}`}>{match[2].slice(1, -1)}</em>);
+    } else if (match[3]) {
+      // _italic_
+      nodes.push(<em key={`u-${key++}`}>{match[3].slice(1, -1)}</em>);
+    } else if (match[4]) {
+      // `code`
+      nodes.push(<code key={`c-${key++}`}>{match[4].slice(1, -1)}</code>);
+    } else if (match[5]) {
       // Citation [N]
-      const num = parseInt(match[3], 10);
+      const num = parseInt(match[6], 10);
       const source = sources[num - 1];
-      if (source) {
-        nodes.push(
-          <CitationBadge
-            key={`c-${key++}-${match.index}`}
-            number={num}
-            source={source.domain ?? source.title}
-            url={source.url}
-            title={source.title}
-          />
-        );
-      } else {
-        nodes.push(
-          <CitationBadge
-            key={`c-${key++}-${match.index}`}
-            number={num}
-            source="source"
-          />
-        );
-      }
+      nodes.push(
+        <CitationBadge
+          key={`cite-${key++}-${match.index}`}
+          number={num}
+          source={source ? (source.domain ?? source.title) : 'source'}
+          url={source?.url}
+          title={source?.title}
+        />,
+      );
     }
 
     lastIndex = match.index + match[0].length;
@@ -62,8 +66,10 @@ function parseInline(text: string, sources: Source[]): ReactNode[] {
   return nodes;
 }
 
+const HEADING_RE = /^(#{1,6})\s+(.*)$/;
+
 /**
- * Parses a markdown string into structured React elements (h2, ul, p)
+ * Parses a markdown string into structured React elements (h1–h6, ul, ol, p)
  * with inline citation badges. Designed to render inside `.answer-copy`.
  */
 export function parseMarkdown(content: string, sources: Source[] = []): ReactNode {
@@ -71,63 +77,87 @@ export function parseMarkdown(content: string, sources: Source[] = []): ReactNod
 
   const lines = content.split('\n');
   const blocks: ReactNode[] = [];
-  let listBuffer: string[] = [];
+  let ulBuffer: string[] = [];
+  let olBuffer: string[] = [];
   let paraBuffer: string[] = [];
   let blockKey = 0;
 
-  const flushList = () => {
-    if (listBuffer.length === 0) return;
-    const items = listBuffer.map((line, idx) => (
+  const flushUl = () => {
+    if (ulBuffer.length === 0) return;
+    const items = ulBuffer.map((line, idx) => (
       <li key={`li-${idx}`}>{parseInline(line, sources)}</li>
     ));
     blocks.push(<ul key={`ul-${blockKey++}`}>{items}</ul>);
-    listBuffer = [];
+    ulBuffer = [];
+  };
+
+  const flushOl = () => {
+    if (olBuffer.length === 0) return;
+    const items = olBuffer.map((line, idx) => (
+      <li key={`li-${idx}`}>{parseInline(line, sources)}</li>
+    ));
+    blocks.push(<ol key={`ol-${blockKey++}`}>{items}</ol>);
+    olBuffer = [];
   };
 
   const flushPara = () => {
     if (paraBuffer.length === 0) return;
     const text = paraBuffer.join(' ');
-    blocks.push(
-      <p key={`p-${blockKey++}`}>{parseInline(text, sources)}</p>
-    );
+    blocks.push(<p key={`p-${blockKey++}`}>{parseInline(text, sources)}</p>);
     paraBuffer = [];
+  };
+
+  const flushAll = () => {
+    flushPara();
+    flushUl();
+    flushOl();
   };
 
   for (const rawLine of lines) {
     const line = rawLine.trim();
 
-    // Empty line — flush both buffers
     if (line === '') {
-      flushPara();
-      flushList();
+      flushAll();
       continue;
     }
 
-    // H2 heading
-    if (line.startsWith('## ')) {
-      flushPara();
-      flushList();
-      const headingText = line.slice(3);
+    // Heading: # → h1, ## → h2, ### → h3, etc.
+    const headingMatch = line.match(HEADING_RE);
+    if (headingMatch) {
+      flushAll();
+      const level = headingMatch[1].length;
+      const headingText = headingMatch[2];
+      const Tag = `h${Math.min(level, 6)}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
       blocks.push(
-        <h2 key={`h2-${blockKey++}`}>{parseInline(headingText, sources)}</h2>
+        <Tag key={`h-${blockKey++}`}>{parseInline(headingText, sources)}</Tag>,
       );
       continue;
     }
 
-    // Bullet
-    if (line.startsWith('- ') || line.startsWith('• ')) {
+    // Unordered bullet
+    if (line.startsWith('- ') || line.startsWith('* ') || line.startsWith('• ')) {
       flushPara();
-      listBuffer.push(line.replace(/^[-•]\s+/, ''));
+      flushOl();
+      ulBuffer.push(line.replace(/^[-*•]\s+/, ''));
+      continue;
+    }
+
+    // Ordered list item: `1. foo`, `2) foo`, etc.
+    const olMatch = line.match(/^(\d+)[.)]\s+(.*)$/);
+    if (olMatch) {
+      flushPara();
+      flushUl();
+      olBuffer.push(olMatch[2]);
       continue;
     }
 
     // Regular paragraph line
-    flushList();
+    flushUl();
+    flushOl();
     paraBuffer.push(line);
   }
 
-  flushPara();
-  flushList();
+  flushAll();
 
   return <>{blocks}</>;
 }

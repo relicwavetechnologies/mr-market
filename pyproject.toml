@@ -17,6 +17,7 @@ dependencies = [
     "feedparser>=6.0.12",
     "httpx>=0.28.1",
     "lxml>=6.1.0",
+    "mem0ai>=2.0.1",
     "nselib>=2.5.1",
     "openai>=2.35.1",
     "pandas>=3.0.2",

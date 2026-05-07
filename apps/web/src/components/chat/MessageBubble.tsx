@@ -1,6 +1,5 @@
 import { Check, Loader2, AlertTriangle } from 'lucide-react';
 import type { Message, ToolEvent } from '@/types';
-import { Disclaimer } from '@/components/common/Disclaimer';
 import { parseMarkdown } from '@/utils/parseMarkdown';
 import { ToolCards } from './ToolCards';
 
@@ -26,7 +25,7 @@ function UserMessage({ content }: { content: string }) {
 }
 
 function AssistantMessage({ message }: { message: Message }) {
-  const { content, sources = [], toolEvents = [], isStreaming, blocked } = message;
+  const { content, sources = [], toolEvents = [], isStreaming, blocked = false } = message;
   const hasContent = content.length > 0;
   const showWaiting = isStreaming && !hasContent && toolEvents.length === 0;
 
@@ -60,7 +59,6 @@ function AssistantMessage({ message }: { message: Message }) {
           )}
         </div>
       )}
-
       {!isStreaming && hasContent && !blocked && toolEvents.length > 0 && (
         <ToolCards events={toolEvents} />
       )}
@@ -74,16 +72,16 @@ function AssistantMessage({ message }: { message: Message }) {
           </p>
         </div>
       )}
-
-      {!isStreaming && hasContent && !blocked && <Disclaimer />}
     </div>
   );
 }
 
 const TOOL_LABELS: Record<string, string> = {
+  memory: 'Memory',
   get_quote: 'Quote',
   get_news: 'News',
   get_company_info: 'Fundamentals',
+  remember_fact: 'Memory Save',
 };
 
 function ToolEventList({ events }: { events: ToolEvent[] }) {
@@ -104,7 +102,17 @@ function ToolEventRow({ ev }: { ev: ToolEvent }) {
 
   let detail = '';
   if (ev.status === 'done' && ev.summary) {
-    if (ev.name === 'get_quote') {
+    if (ev.name === 'memory') {
+      const source = ev.summary.source as string | undefined;
+      const facts = (ev.summary.facts_count as number | undefined) ?? 0;
+      const hits = (ev.summary.hits_count as number | undefined) ?? 0;
+      if (source === 'summary+search') detail = `${facts} fact${facts === 1 ? '' : 's'} · semantic recall`;
+      else if (source === 'summary') detail = `${facts} fact${facts === 1 ? '' : 's'} cached`;
+      else if (source === 'search') detail = `${hits} semantic hit${hits === 1 ? '' : 's'}`;
+      else if (ev.summary.reason === 'no_relevant_memory') detail = 'no relevant memory';
+    } else if (ev.name === 'remember_fact') {
+      detail = ev.summary.stored ? 'saved' : String(ev.summary.error ?? 'save failed');
+    } else if (ev.name === 'get_quote') {
       const conf = ev.summary.confidence as string | undefined;
       const ok = (ev.summary.ok_sources as string[] | undefined)?.length ?? 0;
       detail = `${conf ?? '?'} · ${ok} source${ok === 1 ? '' : 's'}`;
@@ -116,12 +124,24 @@ function ToolEventRow({ ev }: { ev: ToolEvent }) {
       const sc = ev.summary.screener_ok ? 'Screener' : '';
       detail = [yf, sc].filter(Boolean).join(' + ') || '—';
     }
+  } else if (ev.status === 'error' && ev.summary) {
+    if (ev.name === 'memory') {
+      const reason = ev.summary.reason as string | undefined;
+      if (reason === 'anonymous') detail = 'sign in required';
+      else if (reason === 'disabled') detail = 'disabled';
+      else if (reason === 'unconfigured') detail = 'not configured';
+      else detail = reason ?? 'unavailable';
+    } else if (ev.name === 'remember_fact') {
+      detail = String(ev.summary.error ?? 'save failed');
+    }
   }
 
   return (
     <li className="flex items-center gap-2 text-xs">
       {ev.status === 'running' ? (
         <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+      ) : ev.status === 'error' ? (
+        <AlertTriangle className="size-3.5 shrink-0 text-accent-red" />
       ) : (
         <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-accent">
           <Check className="size-2.5 text-foreground/80" />

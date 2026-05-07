@@ -9,7 +9,6 @@ import {
   Telescope,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -87,7 +86,7 @@ export function SearchInput({
         variant === 'chat' && 'rounded-xl',
       )}
     >
-      <Textarea
+      <textarea
         ref={textareaRef}
         value={value}
         onChange={(e) => setValue(e.target.value)}
@@ -98,8 +97,10 @@ export function SearchInput({
         rows={1}
         autoFocus={autoFocus}
         className={cn(
-          'min-h-[52px] resize-none border-0 bg-transparent px-4 pb-1 pt-4 text-[15px] leading-6 shadow-none outline-none focus-visible:border-0 focus-visible:ring-0',
+          'block w-full resize-none border-0 bg-transparent px-4 pb-1 pt-4 text-[15px] leading-6 text-foreground outline-none ring-0',
           'placeholder:text-muted-foreground/70',
+          'min-h-[52px] max-h-[200px]',
+          'disabled:opacity-50',
         )}
       />
 

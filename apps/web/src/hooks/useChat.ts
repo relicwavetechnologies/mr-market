@@ -91,6 +91,27 @@ export function useChat() {
             }
             return;
           }
+          case 'memory_status': {
+            const status =
+              ev.status === 'unavailable' ? 'error' : 'done';
+            const update: ToolEvent = {
+              name: 'memory',
+              status,
+              summary: {
+                status: ev.status,
+                source: ev.source,
+                reason: ev.reason,
+                summary_version: ev.summary_version ?? null,
+                facts_count: ev.facts_count ?? 0,
+                hits_count: ev.hits_count ?? 0,
+              },
+            };
+            const idx = toolEvents.findIndex((t) => t.name === 'memory');
+            if (idx >= 0) toolEvents[idx] = update;
+            else toolEvents.unshift(update);
+            patchMessage(convId!, assistantId, { toolEvents: [...toolEvents] });
+            return;
+          }
           case 'intent':
             intent = ev.intent;
             ticker = ev.ticker;
@@ -105,9 +126,13 @@ export function useChat() {
             const idx = toolEvents.findIndex(
               (t) => t.name === ev.name && t.status === 'running',
             );
+            const summary = ev.summary as Record<string, unknown> | undefined;
             const update: ToolEvent = {
               name: ev.name,
-              status: 'done',
+              status:
+                ev.name === 'remember_fact' && summary?.stored === false
+                  ? 'error'
+                  : 'done',
               ms: ev.ms,
               summary: ev.summary,
               args: idx >= 0 ? toolEvents[idx].args : undefined,
@@ -115,7 +140,6 @@ export function useChat() {
             if (idx >= 0) toolEvents[idx] = update;
             else toolEvents.push(update);
 
-            const summary = ev.summary as Record<string, unknown> | undefined;
             if (summary && typeof summary === 'object') {
               const tickerName =
                 (summary.ticker as string | undefined) ?? ev.name;

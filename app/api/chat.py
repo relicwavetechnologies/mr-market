@@ -12,12 +12,14 @@ Stream events (SSE `data:` JSON):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,9 +32,12 @@ from app.db.models.chat_audit import ChatAudit
 from app.db.models.message import Message
 from app.db.models.user import User
 from app.db.session import get_session
+from app.llm.auth import load_state
+from app.llm.memory import memory_service
 from app.llm.orchestrator import run_chat
 
 router = APIRouter(tags=["chat"])
+log = structlog.get_logger(__name__)
 
 
 class ChatPayload(BaseModel):
@@ -55,36 +60,97 @@ async def chat(
     settings = get_settings()
     conversation: Conversation | None = None
     if current_user is not None:
-        conversation = await _prepare_conversation(payload, current_user=current_user, session=session)
+        conversation = await _prepare_conversation(
+            payload, current_user=current_user, session=session
+        )
 
     async def event_stream():
         started = time.perf_counter()
+        request_id = uuid.uuid4().hex[:12]
         intent_meta: dict[str, Any] = {}
         tool_results: dict[str, Any] = {}
         tool_events: list[dict[str, Any]] = []
+        recalled_facts: list[str] = []
+        memory_status: dict[str, Any] | None = None
         final_message = ""
         blocked = False
         error_message: str | None = None
         guardrail_meta: dict[str, Any] | None = None
+        model_name = settings.openai_model_work
+        user_id = str(current_user.id) if current_user is not None else None
+
+        log.info(
+            "chat_stream_start",
+            request_id=request_id,
+            authenticated=current_user is not None,
+            user_id=user_id,
+            conversation_id=str(conversation.id) if conversation is not None else None,
+            message_len=len(payload.message),
+        )
 
         if conversation is not None:
             yield {
                 "event": "conversation",
-                "data": json.dumps({"type": "conversation", "conversation_id": str(conversation.id)}),
+                "data": json.dumps(
+                    {"type": "conversation", "conversation_id": str(conversation.id)}
+                ),
             }
 
         try:
-            async for ev in run_chat(payload.message, session=session, redis=redis):
-                # Mirror every event to the client as one SSE message.
+            async for ev in run_chat(
+                payload.message,
+                session=session,
+                redis=redis,
+                user_id=str(current_user.id) if current_user is not None else None,
+            ):
+                t = ev.get("type")
+                if t == "memory":
+                    recalled_facts = [
+                        str(fact) for fact in (ev.get("facts") or []) if fact
+                    ]
+                    log.info(
+                        "chat_memory_recalled",
+                        request_id=request_id,
+                        count=len(recalled_facts),
+                    )
+                    continue
+
+                # Mirror public events to the client as one SSE message.
                 yield {"event": ev.get("type", "delta"), "data": json.dumps(ev)}
 
-                t = ev.get("type")
-                if t == "intent":
+                if t == "auth":
+                    model_name = str(ev.get("model") or model_name)
+                    log.info(
+                        "chat_auth_ready",
+                        request_id=request_id,
+                        source=ev.get("source"),
+                        model=model_name,
+                        using_fallback=ev.get("using_fallback"),
+                    )
+                elif t == "intent":
                     intent_meta = {
                         "intent": ev.get("intent"),
                         "ticker": ev.get("ticker"),
                     }
+                    log.info(
+                        "chat_intent",
+                        request_id=request_id,
+                        intent=intent_meta.get("intent"),
+                        ticker=intent_meta.get("ticker"),
+                    )
+                elif t == "memory_status":
+                    memory_status = {k: v for k, v in ev.items() if k != "type"}
+                    log.info(
+                        "chat_memory_status",
+                        request_id=request_id,
+                        **memory_status,
+                    )
                 elif t == "tool_call":
+                    log.info(
+                        "chat_tool_call",
+                        request_id=request_id,
+                        name=ev.get("name"),
+                    )
                     tool_events.append(
                         {
                             "name": ev.get("name"),
@@ -93,9 +159,19 @@ async def chat(
                         }
                     )
                 elif t == "tool_result":
+                    log.info(
+                        "chat_tool_result",
+                        request_id=request_id,
+                        name=ev.get("name"),
+                        ms=ev.get("ms"),
+                        summary=ev.get("summary"),
+                    )
                     tool_results.setdefault(ev["name"], []).append(ev.get("summary"))
                     for item in reversed(tool_events):
-                        if item.get("name") == ev.get("name") and item.get("status") == "running":
+                        if (
+                            item.get("name") == ev.get("name")
+                            and item.get("status") == "running"
+                        ):
                             item.update(
                                 {
                                     "status": "done",
@@ -120,8 +196,18 @@ async def chat(
                     blocked = bool(ev.get("blocked", False))
                 elif t == "error":
                     error_message = ev.get("message")
+                    log.warning(
+                        "chat_stream_error_event",
+                        request_id=request_id,
+                        error=error_message,
+                    )
         except Exception as e:  # noqa: BLE001
             error_message = f"orchestrator crashed: {e!s}"
+            log.exception(
+                "chat_stream_exception",
+                request_id=request_id,
+                error=str(e),
+            )
             yield {
                 "event": "error",
                 "data": json.dumps({"type": "error", "message": error_message}),
@@ -138,7 +224,8 @@ async def chat(
                 gr_min = {
                     k: v
                     for k, v in guardrail_meta.items()
-                    if (isinstance(v, (list, dict)) and v) or (isinstance(v, bool) and v)
+                    if (isinstance(v, (list, dict)) and v)
+                    or (isinstance(v, bool) and v)
                 }
                 if gr_min:
                     flagged_payload["guardrail"] = gr_min
@@ -165,8 +252,9 @@ async def chat(
                     retrieved={
                         "ticker": intent_meta.get("ticker"),
                         "tool_results": tool_results,
+                        "memory": memory_status,
                     },
-                    model=settings.openai_model_work,
+                    model=model_name,
                     output=final_message or error_message,
                     blocked=blocked,
                     flagged=flagged_payload or None,
@@ -174,8 +262,33 @@ async def chat(
                 )
             )
             await session.commit()
+            log.info(
+                "chat_stream_done",
+                request_id=request_id,
+                model=model_name,
+                intent=intent_meta.get("intent"),
+                ticker=intent_meta.get("ticker"),
+                blocked=blocked,
+                error=error_message,
+                latency_ms=duration_ms,
+                tools=list(tool_results.keys()),
+            )
+            if current_user is not None and not error_message:
+                auth = await load_state(redis)
+                asyncio.create_task(
+                    memory_service.add(
+                        str(current_user.id),
+                        text=payload.message,
+                        api_key=auth.api_key if auth.configured else None,
+                        redis=redis,
+                        recalled_facts=recalled_facts,
+                        blocked=blocked,
+                        assistant_text=final_message,
+                    )
+                )
         except Exception:  # noqa: BLE001
             await session.rollback()
+            log.exception("chat_audit_write_failed", request_id=request_id)
 
     return EventSourceResponse(event_stream())
 
@@ -191,9 +304,13 @@ async def _prepare_conversation(
         if conversation is None:
             raise HTTPException(status_code=404, detail="conversation not found")
         if conversation.user_id != current_user.id:
-            raise HTTPException(status_code=403, detail="conversation belongs to another user")
+            raise HTTPException(
+                status_code=403, detail="conversation belongs to another user"
+            )
     else:
-        conversation = Conversation(user_id=current_user.id, title=_title_from_message(payload.message))
+        conversation = Conversation(
+            user_id=current_user.id, title=_title_from_message(payload.message)
+        )
         session.add(conversation)
         await session.flush()
 
@@ -217,7 +334,9 @@ def _title_from_message(message: str) -> str:
     return title[:60]
 
 
-def _sources_from_tool_results(tool_results: dict[str, Any]) -> list[dict[str, str]] | None:
+def _sources_from_tool_results(
+    tool_results: dict[str, Any],
+) -> list[dict[str, str]] | None:
     sources: list[dict[str, str]] = []
     for name, summaries in tool_results.items():
         for summary in summaries or []:
