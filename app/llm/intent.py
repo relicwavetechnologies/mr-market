@@ -30,6 +30,7 @@ Intent = Literal[
     "technicals",     # "RSI on X" / "MACD signal" / "key levels"
     "holding",        # "promoter holding" / "who owns X" / "FII flow"
     "deals",          # "block deals on X" / "institutional flows"
+    "research",       # "from X's annual report" / "what did mgmt say about Y"
     "advisory",       # "should I buy X" / "target for X" / "SL for X"
     "education",      # "what is P/E ratio"
     "refuse",         # off-topic / nonsense / non-financial only
@@ -68,6 +69,12 @@ Allowed intents and examples:
                    "block deals on reliance"     → deals, RELIANCE
                    "who's buying ICICI bank"     → deals, ICICIBANK
 
+- "research"     → quote / cite the company's own annual report, concall
+                   transcript, or any ingested research document.
+                   "what did reliance management say about retail growth" → research, RELIANCE
+                   "from TCS annual report, comments on AI"               → research, TCS
+                   "INFY chairman's letter on margins"                     → research, INFY
+
 - "advisory"     → buy / sell / hold opinion, price target, stop-loss, entry
                    level, F&O strategy, intraday view. **The bot answers these
                    with an analyst view** in internal-tool mode.
@@ -99,7 +106,7 @@ _FORCE_JSON = {"type": "json_object"}
 
 _VALID_INTENTS = {
     "quote", "news", "company_info", "technicals", "holding", "deals",
-    "advisory", "education", "refuse", "other",
+    "research", "advisory", "education", "refuse", "other",
 }
 
 

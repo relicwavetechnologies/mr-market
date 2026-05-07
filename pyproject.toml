@@ -21,6 +21,7 @@ dependencies = [
     "pandas-ta-classic>=0.5.44",
     "pydantic>=2",
     "pydantic-settings>=2.14.0",
+    "pypdf>=6.10.2",
     "python-dotenv>=1.2.2",
     "pyyaml>=6.0.3",
     "redis[hiredis]>=5.3.1",
