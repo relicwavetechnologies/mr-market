@@ -13,11 +13,14 @@ from typing import Any
 from redis import asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import pandas as pd
 from sqlalchemy import desc, select
 
+from app.analytics.levels import compute_levels
 from app.data.info_service import get_info
 from app.data.news_service import get_news_for_ticker
 from app.data.quote_service import get_quote
+from app.db.models.price import PriceDaily
 from app.db.models.technicals import Technicals
 
 
@@ -101,6 +104,34 @@ TOOL_SPECS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "get_levels",
+            "description": (
+                "Get observed price levels for an Indian stock: classic floor-trader "
+                "pivots from yesterday's HLC (PP, R1-R3, S1-S3), multi-touch "
+                "support/resistance bands clustered from the last ~90 trading days, "
+                "and Fibonacci retracements from the most recent swing high/low. "
+                "These are factual price points where buyers/sellers have repeatedly "
+                "shown up — pure observation, not advice. Use for questions about "
+                "key levels, support, resistance, or pivots."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticker": {"type": "string", "description": "NSE ticker symbol"},
+                    "window": {
+                        "type": "integer",
+                        "description": "Lookback bars for S/R clustering (default 90, max 365).",
+                        "minimum": 10,
+                        "maximum": 365,
+                    },
+                },
+                "required": ["ticker"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_company_info",
             "description": (
                 "Get fundamental info about an Indian stock: sector, industry, market "
@@ -138,7 +169,42 @@ async def dispatch(
         return await _get_technicals_payload(
             session, str(args["ticker"]), days=int(args.get("days") or 1)
         )
+    if name == "get_levels":
+        return await _get_levels_payload(
+            session, str(args["ticker"]), window=int(args.get("window") or 90)
+        )
     return {"error": f"unknown tool: {name}"}
+
+
+async def _get_levels_payload(
+    session: AsyncSession, ticker: str, *, window: int
+) -> dict[str, Any]:
+    sym = ticker.upper().strip()
+    rows = (
+        await session.execute(
+            select(
+                PriceDaily.ts,
+                PriceDaily.open,
+                PriceDaily.high,
+                PriceDaily.low,
+                PriceDaily.close,
+                PriceDaily.volume,
+            )
+            .where(PriceDaily.ticker == sym)
+            .where(PriceDaily.source == "nsearchives")
+            .order_by(desc(PriceDaily.ts))
+            .limit(max(10, min(window, 365)))
+        )
+    ).all()
+    if not rows:
+        return {"ticker": sym, "available": False, "note": "no prices for ticker"}
+
+    df = pd.DataFrame(
+        rows, columns=["ts", "open", "high", "low", "close", "volume"]
+    ).sort_values("ts").set_index("ts")
+    out = compute_levels(df, window=window)
+    out["ticker"] = sym
+    return out
 
 
 async def _get_technicals_payload(
