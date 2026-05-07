@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import { useUIStore } from "@/stores/uiStore";
 import { useChatStore } from "@/stores/chatStore";
-import { useAuthStore } from "@/stores/authStore";
 
 export function Sidebar() {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
@@ -19,7 +18,6 @@ export function Sidebar() {
   const conversations = useChatStore((s) => s.conversations);
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
-  const user = useAuthStore((s) => s.user);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -134,25 +132,19 @@ export function Sidebar() {
             )}
           </div>
 
-          {/* User profile at bottom */}
+          {/* Footer (auth deferred to Phase 2 — Guest only for demo) */}
           <div className="border-t border-border-subtle p-3">
             <div className="flex items-center gap-3 rounded-lg px-2 py-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-bg-tertiary text-sm font-medium text-text-primary">
-                {user?.name
-                  ? user.name.charAt(0).toUpperCase()
-                  : "G"}
+                G
               </div>
               <div className="flex-1 overflow-hidden">
-                <p className="truncate text-sm text-text-primary">
-                  {user?.name ?? "Guest"}
-                </p>
-                <p className="truncate text-xs text-text-muted">
-                  {user?.email ?? "Sign in"}
-                </p>
+                <p className="truncate text-sm text-text-primary">Guest</p>
+                <p className="truncate text-xs text-text-muted">demo build</p>
               </div>
               <span className="flex items-center gap-1 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent">
                 <Sparkles size={10} />
-                Pro
+                Demo
               </span>
             </div>
           </div>
