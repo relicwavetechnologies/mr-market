@@ -214,12 +214,43 @@ textarea {
   line-height: 1.7;
 }
 
+.answer-copy h1 {
+  margin-top: 1.75rem;
+  margin-bottom: 0.85rem;
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
 .answer-copy h2 {
   margin-top: 1.5rem;
   margin-bottom: 0.75rem;
   font-size: 1.4rem;
   font-weight: 600;
   line-height: 1.3;
+}
+
+.answer-copy h3 {
+  margin-top: 1.25rem;
+  margin-bottom: 0.55rem;
+  font-size: 1.18rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.answer-copy h4,
+.answer-copy h5,
+.answer-copy h6 {
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.answer-copy em {
+  font-style: italic;
+  color: var(--foreground);
 }
 
 .answer-copy ul, .answer-copy ol {

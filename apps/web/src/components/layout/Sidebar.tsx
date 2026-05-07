@@ -293,6 +293,23 @@ export function Sidebar() {
                 size="icon-xs"
                 onClick={(e) => {
                   e.stopPropagation();
+                  navigate('/settings');
+                }}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="Settings"
+              >
+                <Settings className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Settings</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={(e) => {
+                  e.stopPropagation();
                   toggleTheme();
                 }}
                 className="text-muted-foreground hover:text-foreground"
