@@ -42,3 +42,4 @@ apps/web/vite.config.js
 # Logs
 *.log
 data/research/
+data/mem0-history.db
