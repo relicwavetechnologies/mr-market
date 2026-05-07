@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from redis import asyncio as aioredis
 
-from app.api import auth, chat, health, news, quote
+from app.api import auth, chat, health, news, quote, technicals
 from app.config import get_settings
 
 log = structlog.get_logger()
@@ -55,6 +55,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(quote.router)
     app.include_router(news.router)
+    app.include_router(technicals.router)
     app.include_router(chat.router)
     return app
 

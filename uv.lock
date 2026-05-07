@@ -972,6 +972,7 @@ dependencies = [
     { name = "nselib" },
     { name = "openai" },
     { name = "pandas" },
+    { name = "pandas-ta-classic" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "python-dotenv" },
@@ -1009,6 +1010,7 @@ requires-dist = [
     { name = "nselib", specifier = ">=2.5.1" },
     { name = "openai", specifier = ">=2.35.1" },
     { name = "pandas", specifier = ">=3.0.2" },
+    { name = "pandas-ta-classic", specifier = ">=0.5.44" },
     { name = "pydantic", specifier = ">=2" },
     { name = "pydantic-settings", specifier = ">=2.14.0" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
@@ -1261,6 +1263,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ac/f5/bfac92571b427ca521ce2a136396ba8462ad07e22b37a0976fe273dec8e1/pandas_market_calendars-5.3.2.tar.gz", hash = "sha256:6a77fa6f8e90a79908d96ca0e6c66841b12371080233390afc3d96e346ae2414", size = 169525, upload-time = "2026-04-05T02:19:24.23Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e1/8b/8b9628d02db7df3e1f1e507ca131e6665a0fde07537b9a93b64e9cef544f/pandas_market_calendars-5.3.2-py3-none-any.whl", hash = "sha256:ca84094f68eccf4864ba5ea0254134cb0352b36c1861dd1d6cf7bf17952971b1", size = 130987, upload-time = "2026-04-05T02:19:22.895Z" },
+]
+
+[[package]]
+name = "pandas-ta-classic"
+version = "0.5.44"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pandas" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/18/d5/c03cb801e792ae57c125ae5fa18fa4a948164dd1c33302a6fce50020e5a3/pandas_ta_classic-0.5.44-py3-none-any.whl", hash = "sha256:cfd444639741a60fc39d0f30132799f1884a001b368526ecc063dcb3ad2f25ee", size = 402330, upload-time = "2026-04-30T12:03:15.785Z" },
 ]
 
 [[package]]
