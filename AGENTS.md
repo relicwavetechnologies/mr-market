@@ -51,11 +51,14 @@ Mr. Market  (node: HGcLwdz9tigBGQknoEAll4HFglh)
 | References → Database Schema | `EprewNOwWiaEWOkW06SlhQ7LgOg` | `Ouz3daWVIozSOex321Blue6mghc` |
 | Updates (parent) | `CE5dwNWFKiD7erkMyJilHarlgEc` | `MOwLdr63jovE2lxBg2ulO0ypgQc` |
 | Updates → Monorepo Scaffold (legacy) | `R1ZlwUpVnijxxqkifxDlQwpIgjf` | `FHCtdb9A6o8QjrxFiw5lVTAHgad` |
-| Updates → **Phase 1 — Local Demo** (folder) | `Gngcw4bzziv3hckWAi8ltkbmg9d` | `NBEId2Zpuo2dPexbmB1llBFfgsb` |
-| Phase 1 → **Plan** (canonical demo plan) | `OMhtwb622iXEHfkhsE9lcznVgCe` | `R4xvdN4PFoNSfnxfQ5nlgn5ygab` |
-| Phase 1 → **Updates** (current state + progress log) | `AHWewTiAEiLoGgkuPROlSKOfg9f` | `CzsRdi32zokbDExSnXxlXhRYgLe` |
+| Updates → Phase 1 — Local Demo (folder) | `Gngcw4bzziv3hckWAi8ltkbmg9d` | `NBEId2Zpuo2dPexbmB1llBFfgsb` |
+| Phase 1 → Plan | `OMhtwb622iXEHfkhsE9lcznVgCe` | `R4xvdN4PFoNSfnxfQ5nlgn5ygab` |
+| Phase 1 → Updates | `AHWewTiAEiLoGgkuPROlSKOfg9f` | `CzsRdi32zokbDExSnXxlXhRYgLe` |
+| Updates → **Phase 2 — Analyst Observatory** (folder) | `KT4fwIoBliQmLQk92JQlEGRmghL` | `TyNGdufoNoWtBvxeZcnlgswPgZe` |
+| Phase 2 → **Plan** (canonical) | `MSzqwmN7JiO3OmkkJbTlpNXhgVe` | `InPYdahs4oRegqxRynclQzN4gBg` |
+| Phase 2 → **Updates** (current state + progress log) | `ZeMawqJKviDG3Gknp6xl5CphgVc` | `Pt5qdL1RWo3Gatx3QTTlS2F9ggc` |
 
-**Active feature:** `Phase 1 — Local Demo` (Updates obj_token `CzsRdi32zokbDExSnXxlXhRYgLe`)
+**Active feature:** `Phase 2 — Analyst Observatory` (Updates obj_token `Pt5qdL1RWo3Gatx3QTTlS2F9ggc`)
 
 ### How to read/write wiki pages
 
