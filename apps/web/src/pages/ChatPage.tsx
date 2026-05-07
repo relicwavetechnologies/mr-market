@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChart3,
@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { ChatContainer } from '@/components/chat/ChatContainer';
 import { ChatInput } from '@/components/chat/ChatInput';
+import { AuthBanner } from '@/components/common/AuthBanner';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useChatStore } from '@/stores/chatStore';
@@ -27,6 +28,7 @@ export function ChatPage() {
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const { sendMessage, isGenerating } = useChat();
   const [activeTab, setActiveTab] = useState<string>('answer');
+  const consumedInitialFor = useRef<string | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -36,10 +38,11 @@ export function ChatPage() {
 
   useEffect(() => {
     const state = location.state as { initialQuery?: string } | null;
-    if (state?.initialQuery && id) {
-      sendMessage(state.initialQuery);
-      window.history.replaceState({}, '');
-    }
+    if (!state?.initialQuery || !id) return;
+    if (consumedInitialFor.current === id) return;
+    consumedInitialFor.current = id;
+    sendMessage(state.initialQuery);
+    navigate(`/chat/${id}`, { replace: true, state: {} });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
@@ -69,7 +72,8 @@ export function ChatPage() {
           </TabsList>
         </Tabs>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
+          <AuthBanner />
           <Button
             variant="outline"
             size="sm"

@@ -36,7 +36,7 @@ function parseInline(text: string, sources: Source[]): ReactNode[] {
           <CitationBadge
             key={`c-${key++}-${match.index}`}
             number={num}
-            source={source.domain}
+            source={source.domain ?? source.title}
             url={source.url}
             title={source.title}
           />

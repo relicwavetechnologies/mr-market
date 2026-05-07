@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import type { Conversation, Message } from '@/types';
-import { mockConversations, mockMessages } from '@/services/mockData';
 
 interface ChatState {
   conversations: Conversation[];
@@ -14,15 +13,16 @@ interface ChatState {
   updateMessageStreaming: (conversationId: string, messageId: string, isStreaming: boolean) => void;
   updateMessageSources: (conversationId: string, messageId: string, sources: Message['sources']) => void;
   updateMessageCompletionTime: (conversationId: string, messageId: string, time: number) => void;
+  patchMessage: (conversationId: string, messageId: string, patch: Partial<Message>) => void;
   setActiveConversation: (id: string | null) => void;
   setIsGenerating: (generating: boolean) => void;
   deleteConversation: (id: string) => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
-  conversations: mockConversations,
+  conversations: [],
   activeConversationId: null,
-  messages: mockMessages,
+  messages: {},
   isGenerating: false,
 
   createConversation: (title?: string) => {
@@ -109,6 +109,17 @@ export const useChatStore = create<ChatState>((set) => ({
         ...state.messages,
         [conversationId]: (state.messages[conversationId] ?? []).map((m) =>
           m.id === messageId ? { ...m, completionTime: time } : m
+        ),
+      },
+    }));
+  },
+
+  patchMessage: (conversationId: string, messageId: string, patch: Partial<Message>) => {
+    set((state) => ({
+      messages: {
+        ...state.messages,
+        [conversationId]: (state.messages[conversationId] ?? []).map((m) =>
+          m.id === messageId ? { ...m, ...patch } : m
         ),
       },
     }));

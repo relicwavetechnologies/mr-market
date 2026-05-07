@@ -1,0 +1,25 @@
+# Keep image small + reproducible
+.git
+.github
+.gitignore
+.context
+.venv
+node_modules
+**/node_modules
+apps/web/dist
+apps/web/.vite
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+.DS_Store
+*.log
+docs/
+.vscode
+.idea
+DEMO_PLAN.md
+PHASE_1_PLAN.md
+README.md
+AGENTS.md
+CLAUDE.md
