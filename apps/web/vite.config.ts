@@ -11,14 +11,16 @@ export default defineConfig({
     },
   },
   server: {
-    host: "127.0.0.1",
-    port: 5173,
+    host: "0.0.0.0",
+    port: 5174,
+    strictPort: true,
     proxy: {
-      "/api": {
-        target: "http://localhost:8000",
-        changeOrigin: true,
-        ws: true,
-      },
+      "/api": { target: "http://localhost:8001", changeOrigin: true, ws: true },
+      "/healthz": { target: "http://localhost:8001", changeOrigin: true },
+      "/chat": { target: "http://localhost:8001", changeOrigin: true },
+      "/quote": { target: "http://localhost:8001", changeOrigin: true },
+      "/news": { target: "http://localhost:8001", changeOrigin: true },
+      "/admin": { target: "http://localhost:8001", changeOrigin: true },
     },
   },
 });
