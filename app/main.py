@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="Mr. Market",
+        title="Midas",
         version="0.1.0",
         description="AI trading assistant — Phase 1 local demo",
         lifespan=lifespan,
