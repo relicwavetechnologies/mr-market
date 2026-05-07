@@ -30,7 +30,7 @@ export function AuthModal() {
           <DialogTitle className="text-center font-serif text-2xl font-normal leading-tight tracking-tight">
             Sign up to unlock the full
             <br />
-            potential of Mr. Market
+            potential of Midas
           </DialogTitle>
           <DialogDescription className="text-center text-xs text-muted-foreground">
             By continuing, you agree to our privacy policy.

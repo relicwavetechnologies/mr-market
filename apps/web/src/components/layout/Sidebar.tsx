@@ -136,13 +136,13 @@ export function Sidebar() {
         <button
           onClick={handleNewChat}
           className="flex items-center gap-2 outline-none"
-          aria-label="Mr. Market home"
+          aria-label="Midas home"
         >
           <span className="flex size-6 items-center justify-center rounded-md bg-foreground/10">
             <TrendingUp className="size-3.5 text-foreground" />
           </span>
           <span className="text-[13px] font-medium tracking-tight text-foreground">
-            Mr. Market
+            Midas
           </span>
         </button>
         <Button
