@@ -78,6 +78,14 @@ def _summarise(name: str, payload: dict[str, Any]) -> dict[str, Any]:
             "above_sma200": (payload.get("summary") or {}).get("above_sma200"),
             "atr_14": latest.get("atr_14"),
         }
+    if name == "get_levels":
+        return {
+            "ticker": payload.get("ticker"),
+            "available": payload.get("available"),
+            "n_resistance": len(payload.get("resistance") or []),
+            "n_support": len(payload.get("support") or []),
+            "fib_direction": (payload.get("fibonacci") or {}).get("direction"),
+        }
     return {"raw_keys": list(payload.keys())}
 
 
