@@ -1,59 +1,54 @@
-"""Portfolio REST endpoints (P3-A4 = import; P3-A5 = diagnostics).
+"""Portfolio REST endpoints (P3-A4 import + P3-A5 diagnostics).
 
-Today (P3-A4):
-- `POST /portfolio/import` — fully wired. Accepts either a pre-parsed
-  `holdings` array OR a `raw_text` blob the server parses as CSV or
-  Zerodha-CDSL paste. Persists to `portfolios` + `holdings_user` for the
-  authenticated user. Auth required (PM-1 JWT).
-- `GET /portfolio/{id}/diagnostics` — STILL stubbed; the real diagnostics
-  pipeline lands in P3-A5.
+Both endpoints are now real:
+- `POST /portfolio/import` — auth-gated; CSV / CDSL paste / pre-parsed.
+- `GET /portfolio/{id}/diagnostics` — auth-gated; runs
+  `app/analytics/portfolio.py::compute_diagnostics` against live quotes
+  + yfinance beta/div-yield + 1-year `prices_daily` history. The `_stub`
+  marker is gone.
 
 Schemas locked in `app/contracts/phase3.md`.
 """
 
 from __future__ import annotations
 
-from decimal import Decimal
+import asyncio
+import datetime as dt
+import logging
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.analytics.portfolio import Position, compute_diagnostics
 from app.api.deps import get_current_user
+from app.data.info_service import get_info
 from app.data.portfolio_import import (
     ParsedHolding,
     collapse_duplicates,
     parse_text,
 )
-from app.db.models import HoldingUser, Portfolio, Stock, User
+from app.data.quote_service import get_quote
+from app.db.models import HoldingUser, Portfolio, PriceDaily, Stock, User
 from app.db.session import get_session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
 
-_DIAG_STUB: dict[str, Any] = {
-    "portfolio_id": 17,
-    "as_of": "2026-05-08",
-    "n_positions": 12,
-    "total_value_inr": "284200.00",
-    "concentration": {
-        "top_5_pct": "62.4",
-        "herfindahl": "0.18",
-    },
-    "sector_pct": [
-        {"sector": "Financial Services", "pct": "38.5"},
-        {"sector": "IT", "pct": "22.1"},
-        {"sector": "Energy", "pct": "15.0"},
-        {"sector": "Consumer Goods", "pct": "12.4"},
-        {"sector": "Pharma", "pct": "7.0"},
-        {"sector": "Other", "pct": "5.0"},
-    ],
-    "beta_blend": "1.04",
-    "div_yield": "1.85",
-    "drawdown_1y": "-7.4",
-}
+def _to_decimal(v: object) -> Decimal | None:
+    if v is None:
+        return None
+    if isinstance(v, Decimal):
+        return v
+    try:
+        return Decimal(str(v))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -202,9 +197,102 @@ async def import_portfolio(
 
 
 @router.get("/{portfolio_id}/diagnostics")
-async def diagnostics(portfolio_id: int) -> dict[str, Any]:
-    """STUB — real diagnostics land in P3-A5."""
-    out = dict(_DIAG_STUB)
-    out["portfolio_id"] = portfolio_id
-    out["_stub"] = True
-    return out
+async def diagnostics(
+    portfolio_id: int,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Run diagnostics over the authenticated user's portfolio. Live
+    quotes via the existing get_quote/info pipelines (parallelised),
+    1-year drawdown computed from `prices_daily`."""
+    portfolio = await session.get(Portfolio, portfolio_id)
+    if portfolio is None:
+        raise HTTPException(status_code=404, detail="portfolio not found")
+    if portfolio.user_id != user.id:
+        # Don't leak existence — mirror 404 semantics.
+        raise HTTPException(status_code=404, detail="portfolio not found")
+
+    holdings = (
+        await session.execute(
+            select(HoldingUser).where(HoldingUser.portfolio_id == portfolio_id)
+        )
+    ).scalars().all()
+    if not holdings:
+        raise HTTPException(status_code=400, detail="portfolio has no positions")
+
+    tickers = [h.ticker for h in holdings]
+
+    # Stock metadata (sector lookup) — single DB hop.
+    stock_rows = (
+        await session.execute(select(Stock).where(Stock.ticker.in_(tickers)))
+    ).scalars().all()
+    sector_map: dict[str, str | None] = {s.ticker: s.sector for s in stock_rows}
+
+    redis = request.app.state.redis
+
+    # Live quotes — fan out in parallel; Redis cache absorbs duplicates.
+    async def _quote(t: str) -> tuple[str, Decimal | None]:
+        try:
+            q = await get_quote(t, redis, session)
+            return t, _to_decimal(q.get("price"))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("get_quote failed for %s: %s", t, e)
+            return t, None
+
+    # yfinance info — beta + div_yield (parallel + cached).
+    async def _info(t: str) -> tuple[str, dict[str, Any] | None]:
+        try:
+            info = await get_info(session, t)
+            return t, info
+        except Exception as e:  # noqa: BLE001
+            logger.warning("get_info failed for %s: %s", t, e)
+            return t, None
+
+    quotes = dict(await asyncio.gather(*[_quote(t) for t in tickers]))
+    infos = dict(await asyncio.gather(*[_info(t) for t in tickers]))
+
+    beta_map: dict[str, Decimal | None] = {}
+    div_yield_map: dict[str, Decimal | None] = {}
+    for t in tickers:
+        info = (infos.get(t) or {}).get("yfinance") or {}
+        beta_map[t] = _to_decimal(info.get("beta"))
+        div_yield_map[t] = _to_decimal(info.get("dividend_yield"))
+
+    # 1-year price history from prices_daily (per ticker).
+    cutoff = dt.date.today() - dt.timedelta(days=365)
+    history_rows = (
+        await session.execute(
+            select(PriceDaily.ticker, PriceDaily.ts, PriceDaily.close)
+            .where(PriceDaily.ticker.in_(tickers))
+            .where(PriceDaily.ts >= cutoff)
+            .order_by(PriceDaily.ticker, PriceDaily.ts)
+        )
+    ).all()
+    price_history: dict[str, list[tuple[str, Decimal]]] = {t: [] for t in tickers}
+    for ticker, ts, close in history_rows:
+        if close is None:
+            continue
+        d = ts.date() if hasattr(ts, "date") else ts
+        price_history[ticker].append((d.isoformat(), close))
+
+    positions = [
+        Position(
+            ticker=h.ticker,
+            quantity=int(h.quantity),
+            avg_price=h.avg_price,
+            current_price=quotes.get(h.ticker),
+        )
+        for h in holdings
+    ]
+
+    diagnostics_out = compute_diagnostics(
+        positions,
+        sector_map=sector_map,
+        beta_map=beta_map,
+        div_yield_map=div_yield_map,
+        price_history=price_history,
+    )
+    diagnostics_out["portfolio_id"] = portfolio_id
+    diagnostics_out["as_of"] = dt.date.today().isoformat()
+    return diagnostics_out
