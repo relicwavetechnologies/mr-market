@@ -149,6 +149,21 @@ async def upload_research(
         )
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="upload must be a .pdf file")
+    # FY column is VARCHAR(16) — common forms: FY25, FY2025, FY24-25,
+    # Q4 FY26. Reject anything longer with a clear message instead of
+    # surfacing a Postgres truncation error.
+    if fy and len(fy.strip()) > 16:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"fy too long ({len(fy.strip())} chars; max 16). "
+                "Use a short tag like 'FY25', 'FY2025', or 'FY24-25'."
+            ),
+        )
+    if title and len(title.strip()) > 500:
+        raise HTTPException(
+            status_code=400, detail="title too long (max 500 chars)"
+        )
     # FastAPI's UploadFile mime is best-effort — we'll trust the suffix
     # plus pypdf's parse-error path for the actual content check.
 

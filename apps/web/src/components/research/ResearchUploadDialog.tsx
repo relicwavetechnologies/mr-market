@@ -202,10 +202,11 @@ export function ResearchUploadDialog({ open, onOpenChange }: Props) {
             </Label>
             <Input
               id="upload-fy"
-              placeholder="FY25"
+              placeholder="FY25  or  FY2025  or  FY24-25"
               value={fy}
               onChange={(e) => setFy(e.target.value.toUpperCase())}
               disabled={busy}
+              maxLength={16}
             />
           </div>
           <div className="col-span-2 space-y-1">
