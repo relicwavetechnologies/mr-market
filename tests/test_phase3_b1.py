@@ -86,10 +86,15 @@ class TestToolSpecSchema:
         assert "name" not in required, "run_screener: name should not be required (expr is an alternative)"
         assert "expr" not in required, "run_screener: expr should not be required (name is an alternative)"
 
-    def test_analyse_portfolio_requires_portfolio_id(self):
+    def test_analyse_portfolio_portfolio_id_optional(self):
+        # Updated: portfolio_id is now optional. If absent, the dispatch
+        # defaults to the user's most-recent portfolio (1 found) or
+        # returns a picker payload (≥2 found). This makes prompts like
+        # "diagnose my portfolio" work without an explicit id.
         specs = self._specs_by_name()
         params = specs["analyse_portfolio"]["function"]["parameters"]
-        assert "portfolio_id" in params.get("required", [])
+        assert "portfolio_id" in params.get("properties", {})
+        assert "portfolio_id" not in params.get("required", [])
 
     def test_propose_ideas_requires_risk_profile(self):
         specs = self._specs_by_name()

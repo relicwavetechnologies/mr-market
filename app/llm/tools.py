@@ -285,21 +285,27 @@ TOOL_SPECS: list[dict[str, Any]] = [
         "function": {
             "name": "analyse_portfolio",
             "description": (
-                "Analyse a user's imported portfolio — returns concentration risk, "
-                "sector exposure breakdown, top-5 position weight, blended beta, "
-                "dividend yield, and 1-year drawdown. Requires a portfolio_id from "
-                "a prior import. Use for 'analyse my portfolio' or 'portfolio "
-                "diagnostics' questions."
+                "Analyse the authenticated user's imported portfolio — returns "
+                "concentration risk, sector exposure breakdown, top-5 position "
+                "weight, blended beta, dividend yield, and 1-year drawdown. "
+                "If `portfolio_id` is omitted the server picks the user's "
+                "most recently imported portfolio, so prompts like 'analyse "
+                "my portfolio' work without an ID. Pass `portfolio_id` only "
+                "when the user explicitly references a specific older "
+                "portfolio."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "portfolio_id": {
                         "type": "integer",
-                        "description": "The portfolio ID returned from a prior import.",
+                        "description": (
+                            "Optional. The portfolio ID returned from a prior "
+                            "import. If omitted, the server defaults to the "
+                            "user's most recent portfolio."
+                        ),
                     },
                 },
-                "required": ["portfolio_id"],
             },
         },
     },
@@ -462,10 +468,12 @@ async def dispatch(
             risk_profile=args.get("_risk_profile"),
         )
     if name == "analyse_portfolio":
+        raw_pid = args.get("portfolio_id")
         return await _analyse_portfolio_payload(
             session,
             redis,
-            portfolio_id=int(args["portfolio_id"]),
+            portfolio_id=int(raw_pid) if raw_pid is not None else None,
+            user_id=user_id,
         )
     if name == "propose_ideas":
         return await _propose_ideas_payload(
@@ -899,16 +907,24 @@ async def _analyse_portfolio_payload(
     session: AsyncSession,
     redis: aioredis.Redis,
     *,
-    portfolio_id: int,
+    portfolio_id: int | None = None,
+    user_id: str | None = None,
 ) -> dict[str, Any]:
     """Analyse a user portfolio. Bridges to `app.analytics.portfolio`
     (Dev A) — the real engine has been live since P3-A5. Loads
     positions + live quotes + yfinance beta/div + 1-year price history,
-    then calls `compute_diagnostics` and returns its dict directly."""
+    then calls `compute_diagnostics` and returns its dict directly.
+
+    If `portfolio_id` is None, defaults to the authenticated user's
+    most recently imported portfolio. Without `user_id` and without an
+    explicit `portfolio_id`, returns a friendly "no portfolio" error
+    rather than guessing.
+    """
     import datetime as dt
+    import uuid as _uuid
     from decimal import Decimal, InvalidOperation
 
-    from sqlalchemy import select
+    from sqlalchemy import desc, select
 
     from app.analytics.portfolio import Position, compute_diagnostics
     from app.data.info_service import get_info
@@ -926,9 +942,89 @@ async def _analyse_portfolio_payload(
             return None
 
     try:
-        portfolio = await session.get(Portfolio, portfolio_id)
-        if portfolio is None:
-            return {"available": False, "error": f"portfolio {portfolio_id} not found"}
+        portfolio: Portfolio | None = None
+        if portfolio_id is not None:
+            portfolio = await session.get(Portfolio, portfolio_id)
+            if portfolio is None:
+                return {
+                    "available": False,
+                    "error": f"portfolio {portfolio_id} not found",
+                }
+            # Per-user isolation when caller supplied user_id.
+            if user_id is not None:
+                try:
+                    uid = _uuid.UUID(str(user_id))
+                except (ValueError, TypeError):
+                    uid = None
+                if uid is not None and portfolio.user_id != uid:
+                    return {
+                        "available": False,
+                        "error": f"portfolio {portfolio_id} not found",
+                    }
+        else:
+            # No explicit portfolio_id. List the user's portfolios and:
+            # - 0 → ask them to import one
+            # - 1 → analyse it directly (no friction)
+            # - 2+ → return a picker payload; the model surfaces a list
+            #        and asks the user which one to analyse.
+            if not user_id:
+                return {
+                    "available": False,
+                    "error": (
+                        "no portfolio_id supplied and no signed-in user — "
+                        "import a portfolio first via the briefcase button "
+                        "in the chat input"
+                    ),
+                }
+            try:
+                uid = _uuid.UUID(str(user_id))
+            except (ValueError, TypeError):
+                return {
+                    "available": False,
+                    "error": "invalid user id",
+                }
+
+            user_portfolios = (
+                await session.execute(
+                    select(Portfolio)
+                    .where(Portfolio.user_id == uid)
+                    .order_by(desc(Portfolio.created_at))
+                )
+            ).scalars().all()
+
+            if not user_portfolios:
+                return {
+                    "available": False,
+                    "needs_import": True,
+                    "error": (
+                        "no portfolios found for this user — import one "
+                        "first via the briefcase button in the chat input"
+                    ),
+                }
+            if len(user_portfolios) > 1:
+                # Picker payload — let the model render a chooser.
+                return {
+                    "available": False,
+                    "needs_pick": True,
+                    "portfolios": [
+                        {
+                            "id": p.id,
+                            "name": p.name,
+                            "source": p.source,
+                            "created_at": p.created_at.isoformat()
+                            if p.created_at
+                            else None,
+                        }
+                        for p in user_portfolios
+                    ],
+                    "message": (
+                        f"You have {len(user_portfolios)} portfolios. "
+                        "Tell me which one to analyse — by name, by import "
+                        "date, or by id (e.g. 'analyse portfolio 17')."
+                    ),
+                }
+            portfolio = user_portfolios[0]
+        portfolio_id = portfolio.id
 
         holdings = (
             await session.execute(
@@ -944,24 +1040,24 @@ async def _analyse_portfolio_payload(
         ).scalars().all()
         sector_map = {s.ticker: s.sector for s in stocks}
 
-        # Live quotes + yfinance info, in parallel.
-        import asyncio as _asyncio
-
-        async def _q(t: str):
+        # Live quotes + yfinance info — sequential per ticker.
+        # We can't use asyncio.gather here because get_quote/get_info both
+        # touch the shared AsyncSession, and SQLAlchemy AsyncSession is
+        # NOT safe for concurrent access. Each scrape is Redis-cached so
+        # the second-call cost stays low; total adds 100-300 ms vs the
+        # parallel version, well under the latency budget.
+        quotes: dict[str, Decimal | None] = {}
+        infos: dict[str, dict[str, Any] | None] = {}
+        for t in tickers:
             try:
                 q = await get_quote(t, redis, session)
-                return t, _to_decimal(q.get("price"))
+                quotes[t] = _to_decimal(q.get("price"))
             except Exception:  # noqa: BLE001
-                return t, None
-
-        async def _i(t: str):
+                quotes[t] = None
             try:
-                return t, await get_info(session, t)
+                infos[t] = await get_info(session, t)
             except Exception:  # noqa: BLE001
-                return t, None
-
-        quotes = dict(await _asyncio.gather(*[_q(t) for t in tickers]))
-        infos = dict(await _asyncio.gather(*[_i(t) for t in tickers]))
+                infos[t] = None
         beta_map = {
             t: _to_decimal(((infos.get(t) or {}).get("yfinance") or {}).get("beta"))
             for t in tickers
