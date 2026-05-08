@@ -15,11 +15,19 @@ export default defineConfig(({ mode }) => {
     "^/chat$": { target: apiTarget, changeOrigin: true },
     "/api": { target: apiTarget, changeOrigin: true, ws: true },
     "/healthz": { target: apiTarget, changeOrigin: true },
+    // Phase-1 / Phase-2 surfaces.
     "/quote": { target: apiTarget, changeOrigin: true },
     "/news": { target: apiTarget, changeOrigin: true },
     "/technicals": { target: apiTarget, changeOrigin: true },
     "/levels": { target: apiTarget, changeOrigin: true },
     "/holding": { target: apiTarget, changeOrigin: true },
+    "/deals": { target: apiTarget, changeOrigin: true },
+    "/research": { target: apiTarget, changeOrigin: true },
+    // Phase-3 surfaces.
+    "/screener": { target: apiTarget, changeOrigin: true },
+    "/portfolio": { target: apiTarget, changeOrigin: true },
+    "/backtest": { target: apiTarget, changeOrigin: true },
+    "/watchlist": { target: apiTarget, changeOrigin: true },
     "/admin": { target: apiTarget, changeOrigin: true },
   };
 
