@@ -360,8 +360,8 @@ def main() -> None:
     p.add_argument(
         "--pass-min",
         type=int,
-        default=75,
-        help="minimum number of passing prompts (default 75 / 80)",
+        default=110,
+        help="minimum number of passing prompts (default 110 / 120)",
     )
     p.add_argument(
         "--filter",

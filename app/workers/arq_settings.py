@@ -14,6 +14,7 @@ from arq.cron import cron
 from app.config import get_settings
 from app.db.session import SessionLocal
 from app.workers.eod_ingest import ingest_one_day
+from app.workers.watchlist_digest import task_watchlist_digest
 
 logger = logging.getLogger(__name__)
 
@@ -54,11 +55,13 @@ async def task_eod_for_date(_ctx, ymd: str) -> dict:
 
 class WorkerSettings:
     redis_settings = _redis_settings()
-    functions = [task_eod_for_date]
+    functions = [task_eod_for_date, task_watchlist_digest]
 
     # 04:00 IST = 22:30 UTC the previous day. arq's cron runs in UTC.
     # NSE bhavcopy is normally available by ~18:30 IST (13:00 UTC), so 22:30
     # UTC gives us a generous safety margin.
+    # Watchlist digest fires 30 min after EOD ingest (23:00 UTC = 04:30 IST)
+    # so prev-close + latest-close are both populated by then.
     cron_jobs = [
         cron(
             task_eod_yesterday,
@@ -67,5 +70,13 @@ class WorkerSettings:
             run_at_startup=False,
             unique=True,
             timeout=600,
+        ),
+        cron(
+            task_watchlist_digest,
+            hour={23},
+            minute={0},
+            run_at_startup=False,
+            unique=True,
+            timeout=300,
         ),
     ]

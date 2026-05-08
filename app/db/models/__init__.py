@@ -12,6 +12,7 @@ from app.db.models.scrape_log import ScrapeLog
 from app.db.models.stock import Stock
 from app.db.models.technicals import Technicals
 from app.db.models.user import User
+from app.db.models.watchlist import Watchlist
 
 __all__ = [
     "ChatAudit",
@@ -30,4 +31,5 @@ __all__ = [
     "Stock",
     "Technicals",
     "User",
+    "Watchlist",
 ]
