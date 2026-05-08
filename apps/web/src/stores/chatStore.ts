@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import * as chatsApi from '@/services/chatsApi';
-import type { Conversation, Message } from '@/types';
+import type { ContextInfo, Conversation, Message } from '@/types';
 
 const LOCAL_ID_PREFIX = 'local-';
 
@@ -8,6 +8,7 @@ interface ChatState {
   conversations: Conversation[];
   activeConversationId: string | null;
   messages: Record<string, Message[]>;
+  contextInfo: Record<string, ContextInfo>;
   isGenerating: boolean;
 
   createConversation: (title?: string) => string;
@@ -20,6 +21,7 @@ interface ChatState {
   updateMessageSources: (conversationId: string, messageId: string, sources: Message['sources']) => void;
   updateMessageCompletionTime: (conversationId: string, messageId: string, time: number) => void;
   patchMessage: (conversationId: string, messageId: string, patch: Partial<Message>) => void;
+  setContextInfo: (conversationId: string, info: ContextInfo) => void;
   setActiveConversation: (id: string | null) => void;
   setIsGenerating: (generating: boolean) => void;
   deleteConversation: (id: string) => Promise<void>;
@@ -34,6 +36,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   conversations: [],
   activeConversationId: null,
   messages: {},
+  contextInfo: {},
   isGenerating: false,
 
   createConversation: (title?: string) => {
@@ -58,6 +61,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({
       conversations,
       messages: {},
+      contextInfo: {},
       activeConversationId: null,
     });
   },
@@ -81,6 +85,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const messages = { ...state.messages };
       delete messages[oldId];
       messages[newId] = oldMessages;
+      const contextInfo = { ...state.contextInfo };
+      if (contextInfo[oldId]) {
+        contextInfo[newId] = contextInfo[oldId];
+        delete contextInfo[oldId];
+      }
 
       const conversations = state.conversations.map((conversation) =>
         conversation.id === oldId
@@ -91,6 +100,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return {
         conversations,
         messages,
+        contextInfo,
         activeConversationId:
           state.activeConversationId === oldId ? newId : state.activeConversationId,
       };
@@ -181,6 +191,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
   },
 
+  setContextInfo: (conversationId: string, info: ContextInfo) => {
+    set((state) => ({
+      contextInfo: {
+        ...state.contextInfo,
+        [conversationId]: info,
+      },
+    }));
+  },
+
   setActiveConversation: (id: string | null) => {
     set({ activeConversationId: id });
   },
@@ -193,10 +212,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!isLocalConversationId(id)) await chatsApi.deleteChat(id);
     set((state) => {
       const messages = { ...state.messages };
+      const contextInfo = { ...state.contextInfo };
       delete messages[id];
+      delete contextInfo[id];
       return {
         conversations: state.conversations.filter((c) => c.id !== id),
         messages,
+        contextInfo,
         activeConversationId: state.activeConversationId === id ? null : state.activeConversationId,
       };
     });
@@ -204,7 +226,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   clearAll: () => {
     get().setIsGenerating(false);
-    set({ conversations: [], activeConversationId: null, messages: {}, isGenerating: false });
+    set({
+      conversations: [],
+      activeConversationId: null,
+      messages: {},
+      contextInfo: {},
+      isGenerating: false,
+    });
   },
 }));
 

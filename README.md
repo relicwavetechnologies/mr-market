@@ -26,7 +26,7 @@ midas/
 │   │   ├── hooks/useChat.ts
 │   │   ├── services/{api,mockData}.ts
 │   │   └── types/index.ts
-│   └── vite.config.ts      proxies /api,/healthz,/chat,/quote,/news,/admin → :8001
+│   └── vite.config.ts      proxies /api,/healthz,/chat,/quote,/news,/admin → :8000
 │
 ├── data/nifty50.csv        50 NIFTY-50 ticker seed
 ├── migrations/             Alembic revisions
@@ -73,8 +73,8 @@ cd apps/web && pnpm install && cd ../..
 ## Run the stack (two terminals)
 
 ```bash
-# Terminal 1 — backend on :8001
-uv run uvicorn app.main:app --reload --port 8001
+# Terminal 1 — backend on :8000
+uv run uvicorn app.main:app --reload --port 8000
 
 # Terminal 2 — frontend on :5174 (proxies to backend)
 cd apps/web && pnpm dev
@@ -85,7 +85,7 @@ Open <http://localhost:5174/>.
 ## Quick health check
 
 ```bash
-curl http://localhost:8001/healthz                # direct
+curl http://localhost:8000/healthz                # direct
 curl http://localhost:5174/healthz                # via Vite proxy
 psql -d mrmarket -c "SELECT COUNT(*) FROM stocks" # should print 50
 ```
@@ -94,7 +94,7 @@ psql -d mrmarket -c "SELECT COUNT(*) FROM stocks" # should print 50
 
 - Postgres + Redis running natively (Homebrew services)
 - 5 tables migrated · 50 NIFTY-50 stocks seeded
-- FastAPI on `:8001` with `GET /` and `GET /healthz` (DB roundtrip green)
+- FastAPI on `:8000` with `GET /` and `GET /healthz` (DB roundtrip green)
 - React on `:5174` (Tailwind v4, Zustand, React Router) · build clean · dev server proxying to backend
 - `/chat` UI streams **mock** responses (real LLM streaming wired in D4)
 

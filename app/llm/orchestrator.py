@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -40,6 +41,7 @@ from app.analytics.ticker_ner import build_index
 from app.config import get_settings
 from app.llm.auth import AuthState, effective_models, load_state
 from app.llm.codex_client import CodexOpenAIClient
+from app.llm.context import build_history_messages, estimate_tokens
 from app.llm.guardrails import apply_guardrails
 from app.llm.intent import classify
 from app.llm.memory import (
@@ -151,7 +153,8 @@ def _summarise(name: str, payload: dict[str, Any]) -> dict[str, Any]:
             "public_pct": latest.get("public_pct"),
             "employee_trust_pct": latest.get("employee_trust_pct"),
             "pledged_pct": latest.get("pledged_pct") or pledge.get("pledged_pct"),
-            "pledge_risk_band": latest.get("pledge_risk_band") or pledge.get("risk_band"),
+            "pledge_risk_band": latest.get("pledge_risk_band")
+            or pledge.get("risk_band"),
             "xbrl_url": payload.get("xbrl_url"),
             "n_quarters": len(series),
             "series": compact_series,
@@ -220,8 +223,7 @@ def _summarise(name: str, payload: dict[str, Any]) -> dict[str, Any]:
     if name == "propose_ideas":
         ideas = payload.get("ideas") or []
         compact_ideas = [
-            {"ticker": i.get("ticker"), "score": i.get("score")}
-            for i in ideas[:5]
+            {"ticker": i.get("ticker"), "score": i.get("score")} for i in ideas[:5]
         ]
         return {
             "available": payload.get("available"),
@@ -278,6 +280,7 @@ async def run_chat(
     redis: aioredis.Redis,
     user_id: str | None = None,
     risk_profile: str | None = None,
+    conversation_id: uuid.UUID | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     settings = get_settings()
     auth: AuthState = await load_state(redis)
@@ -301,6 +304,7 @@ async def run_chat(
         "using_fallback": models.using_fallback,
         "message": models.fallback_reason,
     }
+    yield {"type": "status", "message": "Checking memory and context..."}
 
     handled = await _handle_memory_command(
         user_message,
@@ -378,6 +382,7 @@ async def run_chat(
         return
 
     # Build ticker index once for the disclaimer injector. Cheap (50 rows).
+    yield {"type": "status", "message": "Preparing market context..."}
     try:
         ticker_index = await build_index(session)
     except Exception as e:  # noqa: BLE001
@@ -385,6 +390,7 @@ async def run_chat(
         ticker_index = None
 
     # --- Intent + ticker pre-extraction (cheap, single Haiku-style call) -------
+    yield {"type": "status", "message": "Routing your question..."}
     intent_info = await classify(client, user_message, model=models.router)
     yield {
         "type": "intent",
@@ -424,11 +430,14 @@ async def run_chat(
 
     # --- Main tool-calling loop -----------------------------------------------
     messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    system_token_texts = [SYSTEM_PROMPT]
+    memory_text = ""
     if memory_summary is not None or recalled_memories:
+        memory_text = build_memory_block(memory_summary, recalled_memories)
         messages.append(
             {
                 "role": "system",
-                "content": build_memory_block(memory_summary, recalled_memories),
+                "content": memory_text,
             }
         )
     memory_available = memory_reason is None and user_id is not None
@@ -439,16 +448,31 @@ async def run_chat(
             reason=memory_reason or "anonymous",
             signed_in=user_id is not None,
         )
+        unavailable_text = (
+            "Durable memory saving is unavailable for this turn. If the user "
+            "states a preference, acknowledge it for the current conversation "
+            "only and do not claim it was saved."
+        )
+        system_token_texts.append(unavailable_text)
         messages.append(
             {
                 "role": "system",
-                "content": (
-                    "Durable memory saving is unavailable for this turn. If the user "
-                    "states a preference, acknowledge it for the current conversation "
-                    "only and do not claim it was saved."
-                ),
+                "content": unavailable_text,
             }
         )
+    history_messages, context_info = await build_history_messages(
+        conversation_id,
+        session=session,
+        redis=redis,
+        current_message=user_message,
+        client=client,
+        model=models.work,
+        system_tokens=sum(estimate_tokens(text) for text in system_token_texts),
+        memory_tokens=estimate_tokens(memory_text),
+    )
+    messages.extend(history_messages)
+    yield {"type": "context_info", **context_info.to_dict()}
+    yield {"type": "status", "message": "Asking the analyst model..."}
     messages.append({"role": "user", "content": user_message})
 
     # Narrow the tool catalog based on the router's intent — fewer tools
@@ -481,16 +505,33 @@ async def run_chat(
         tool_calls = list(message.tool_calls or [])
 
         if not tool_calls:
-            # No (more) tools needed. The workhorse already produced the
-            # final answer in `message.content` on this same call — emit it
-            # as pseudo-deltas instead of re-calling OpenAI with stream=True
-            # to regenerate the same text. Saves ~1.5-3 s per "answered"
-            # turn at zero quality cost.
-            buffered = message.content or ""
-            for chunk in _chunk(buffered, size=24):
-                final_text_parts.append(chunk)
-                yield {"type": "delta", "text": chunk}
+            # No (more) tools needed. Use a dedicated streaming final call so
+            # the UI receives token deltas instead of waiting for one complete
+            # non-streamed response and then replaying pseudo-chunks.
+            try:
+                stream = await client.chat.completions.create(
+                    model=models.work,
+                    temperature=0.2,
+                    max_tokens=600,
+                    messages=messages,
+                    stream=True,
+                )
+            except Exception as e:  # noqa: BLE001
+                buffered = message.content or ""
+                if not buffered:
+                    yield {"type": "error", "message": f"OpenAI stream error: {e!s}"}
+                    return
+                for chunk in _chunk(buffered, size=24):
+                    final_text_parts.append(chunk)
+                    yield {"type": "delta", "text": chunk}
+            else:
+                async for ev in stream:
+                    delta = ev.choices[0].delta.content if ev.choices else None
+                    if delta:
+                        final_text_parts.append(delta)
+                        yield {"type": "delta", "text": delta}
 
+            buffered = "".join(final_text_parts)
             guarded = apply_guardrails(
                 buffered,
                 tool_results=tool_results,
@@ -546,7 +587,9 @@ async def run_chat(
         # against parallel SELECTs; each tool's HTTP scrape uses its own
         # short-lived AsyncClient. A 3-tool round goes from sum(latencies)
         # to max(latencies).
-        async def _run_one(name: str, args: dict[str, Any]) -> tuple[dict[str, Any], int]:
+        async def _run_one(
+            name: str, args: dict[str, Any]
+        ) -> tuple[dict[str, Any], int]:
             t0 = time.perf_counter()
             effective_args = _inject_risk_profile(name, args, risk_profile)
             try:

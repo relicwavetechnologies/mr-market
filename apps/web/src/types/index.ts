@@ -27,6 +27,19 @@ export interface ToolEvent {
   ms?: number;
 }
 
+export interface ContextInfo {
+  system_tokens: number;
+  memory_tokens: number;
+  history_tokens: number;
+  history_compacted: boolean;
+  recent_turns: number;
+  older_turns: number;
+  current_msg_tokens: number;
+  total_tokens: number;
+  budget_tokens: number;
+  usage_pct: number;
+}
+
 // ----- Tool-summary shapes (mirror app/llm/orchestrator.py::_summarise) -----
 // All numeric fields are stringified (Decimal serialization) on the wire;
 // renderers should call `Number(x)` or display verbatim.
@@ -218,6 +231,7 @@ export type ChatStreamEvent =
       message?: string | null;
     }
   | { type: 'conversation'; conversation_id: string }
+  | { type: 'status'; message: string }
   | {
       type: 'memory_status';
       status: 'used' | 'miss' | 'unavailable';
@@ -227,6 +241,7 @@ export type ChatStreamEvent =
       facts_count?: number;
       hits_count?: number;
     }
+  | ({ type: 'context_info' } & ContextInfo)
   | { type: 'intent'; intent: string | null; ticker: string | null }
   | { type: 'tool_call'; name: string; args: Record<string, unknown> }
   | {

@@ -1,5 +1,5 @@
 import { apiFetch, parseJsonOrThrow } from './apiClient';
-import type { Conversation, Message } from '@/types';
+import type { ContextInfo, Conversation, Message } from '@/types';
 
 interface ApiConversation {
   id: string;
@@ -49,6 +49,19 @@ export async function createChat(title = 'New Chat'): Promise<ConversationDetail
 export async function getChat(id: string): Promise<ConversationDetail> {
   const res = await apiFetch(`/api/chats/${id}`);
   return normalizeDetail(await parseJsonOrThrow<ApiConversationDetail>(res, 'Load chat'));
+}
+
+export async function getContextInfo(
+  id: string,
+  init: Pick<RequestInit, 'signal'> = {},
+): Promise<ContextInfo> {
+  const res = await apiFetch(`/api/chats/${id}/context-info`, init);
+  return parseJsonOrThrow<ContextInfo>(res, 'Load context info');
+}
+
+export async function compactContext(id: string): Promise<ContextInfo> {
+  const res = await apiFetch(`/api/chats/${id}/compact`, { method: 'POST' });
+  return parseJsonOrThrow<ContextInfo>(res, 'Compact context');
 }
 
 export async function renameChat(id: string, title: string): Promise<Conversation> {

@@ -225,7 +225,7 @@ export function Sidebar() {
                     <li
                       key={conv.id}
                       className={cn(
-                        'group/conv relative flex h-7 items-center rounded-md transition-colors',
+                        'group/conv relative flex h-7 min-w-0 items-center overflow-hidden rounded-md transition-colors',
                         isActive
                           ? 'bg-accent text-foreground'
                           : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
@@ -233,10 +233,12 @@ export function Sidebar() {
                     >
                       <button
                         onClick={() => handleConversationClick(conv.id)}
-                        className="flex h-full w-full items-center px-2 pr-7 text-left text-[12.5px] outline-none"
+                        className="flex h-full w-full min-w-0 items-center px-2 pr-7 text-left text-[12.5px] outline-none"
                         title={conv.title}
                       >
-                        <span className="truncate">{conv.title}</span>
+                        <span className="block truncate">
+                          {conv.title.length > 28 ? conv.title.slice(0, 25) + '...' : conv.title}
+                        </span>
                       </button>
                       <Tooltip>
                         <TooltipTrigger asChild>
