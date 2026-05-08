@@ -135,12 +135,21 @@ Allowed intents and examples:
                    "tell me a joke"               → refuse, null
                    (Counter-example: "where should I invest 50k" → advisory)
 
-- "other"        → anything that doesn't fit above (greetings, multi-topic
-                   asks like "give me X's price, RSI and holdings" — when
-                   it's a clean multi-tool blend, prefer "other" so the
-                   workhorse sees the full tool catalog).
+- "other"        → anything that doesn't fit above: greetings, multi-topic
+                   asks, follow-up / clarification requests, conversational
+                   replies to a previous answer.
                    "hi"                           → other, null
                    "price RSI and holding for X"  → other, X
+                   "I did not understand"          → other, null
+                   "explain that again"            → other, null
+                   "can you break it down"         → other, null
+                   "what do you mean"              → other, null
+                   "tell me more"                  → other, null
+                   "explain me in a better manner" → other, null
+                   "why?"                          → other, null
+                   "how?"                          → other, null
+                   "ok"                            → other, null
+                   "thanks"                        → other, null
 
 CRITICAL:
 - Buy/sell/target/SL/intraday/F&O questions are "advisory", NOT "refuse".
@@ -151,6 +160,10 @@ CRITICAL:
 - "give me trade ideas" / "what should I look at" is "idea", not "advisory".
 - "backtest this screener" is "backtest", not "screener".
 - "analyse my portfolio" is "portfolio", not "advisory".
+- Follow-up / clarification messages ("I did not understand", "explain that",
+  "what do you mean", "tell me more", "why?", "how?", "ok", "thanks") are
+  ALWAYS "other" — NEVER "refuse". These are conversational responses to a
+  previous answer, not off-topic questions.
 """
 
 
