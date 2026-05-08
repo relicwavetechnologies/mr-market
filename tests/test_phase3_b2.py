@@ -211,13 +211,16 @@ class TestDispatchWithRiskProfile:
 
     @pytest.mark.asyncio
     async def test_run_screener_receives_risk_profile(self, mock_session, mock_redis):
+        # P3-A2/A-3: real engine; with a mocked session this errors out
+        # but the contract is just that dispatch returns a dict and the
+        # fallback sentinel is gone.
         result = await dispatch(
             "run_screener",
             {"expr": "rsi_14 < 30", "_risk_profile": "conservative"},
             session=mock_session, redis=mock_redis,
         )
-        assert result["available"] is False
-        assert "not yet deployed" in result["error"]
+        assert isinstance(result, dict)
+        assert "not yet deployed" not in str(result.get("error", ""))
 
     @pytest.mark.asyncio
     async def test_propose_ideas_uses_injected_profile(self, mock_session, mock_redis):
