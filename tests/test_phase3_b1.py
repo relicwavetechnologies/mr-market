@@ -137,24 +137,27 @@ class TestDispatchImportFallbacks:
         return AsyncMock()
 
     @pytest.mark.asyncio
-    async def test_run_screener_import_fallback(self, mock_session, mock_redis):
+    async def test_run_screener_real_impl_now(self, mock_session, mock_redis):
+        # P3-A2/A-3 wired the real engine. Against a mocked session the
+        # call may error out (no DB) — the contract is that the dispatch
+        # returns a dict and the "not yet deployed" sentinel is gone.
         result = await dispatch(
             "run_screener",
             {"name": "oversold_quality"},
             session=mock_session, redis=mock_redis,
         )
-        assert result["available"] is False
-        assert "not yet deployed" in result["error"]
+        assert isinstance(result, dict)
+        assert "not yet deployed" not in str(result.get("error", ""))
 
     @pytest.mark.asyncio
-    async def test_run_screener_with_expr_import_fallback(self, mock_session, mock_redis):
+    async def test_run_screener_with_expr_real_impl_now(self, mock_session, mock_redis):
         result = await dispatch(
             "run_screener",
             {"expr": "rsi_14 < 30 AND pe_trailing < 20"},
             session=mock_session, redis=mock_redis,
         )
-        assert result["available"] is False
-        assert "not yet deployed" in result["error"]
+        assert isinstance(result, dict)
+        assert "not yet deployed" not in str(result.get("error", ""))
 
     @pytest.mark.asyncio
     async def test_run_screener_no_name_no_expr_returns_error(self, mock_session, mock_redis):
@@ -167,24 +170,27 @@ class TestDispatchImportFallbacks:
         assert "provide either" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_analyse_portfolio_import_fallback(self, mock_session, mock_redis):
+    async def test_analyse_portfolio_real_impl_now(self, mock_session, mock_redis):
+        # P3-A5 wired the real diagnostics. Mocked session → likely
+        # error path; only the fallback sentinel must be gone.
         result = await dispatch(
             "analyse_portfolio",
             {"portfolio_id": 42},
             session=mock_session, redis=mock_redis,
         )
-        assert result["available"] is False
-        assert "not yet deployed" in result["error"]
+        assert isinstance(result, dict)
+        assert "not yet deployed" not in str(result.get("error", ""))
 
     @pytest.mark.asyncio
-    async def test_propose_ideas_import_fallback(self, mock_session, mock_redis):
+    async def test_propose_ideas_real_impl_now(self, mock_session, mock_redis):
+        # P3-A2/A-3 + P3-B3: trade-idea engine is real now.
         result = await dispatch(
             "propose_ideas",
             {"risk_profile": "balanced"},
             session=mock_session, redis=mock_redis,
         )
-        assert result["available"] is False
-        assert "not yet deployed" in result["error"]
+        assert isinstance(result, dict)
+        assert "not yet deployed" not in str(result.get("error", ""))
 
     @pytest.mark.asyncio
     async def test_propose_ideas_invalid_risk_profile(self, mock_session, mock_redis):
@@ -326,14 +332,16 @@ class TestDispatchEdgeCases:
         assert "unknown tool" in result.get("error", "")
 
     @pytest.mark.asyncio
-    async def test_propose_ideas_with_theme(self, mock_session, mock_redis):
+    async def test_propose_ideas_with_theme_real_impl(self, mock_session, mock_redis):
+        # Real engine wired; mocked session → error path; only the
+        # fallback sentinel must be gone.
         result = await dispatch(
             "propose_ideas",
             {"risk_profile": "aggressive", "theme": "momentum breakout"},
             session=mock_session, redis=mock_redis,
         )
-        assert result["available"] is False
-        assert "not yet deployed" in result["error"]
+        assert isinstance(result, dict)
+        assert "not yet deployed" not in str(result.get("error", ""))
 
     @pytest.mark.asyncio
     async def test_run_screener_name_takes_precedence_when_no_expr(self, mock_session, mock_redis):

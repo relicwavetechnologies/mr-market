@@ -173,14 +173,16 @@ class TestProposeIdeasDispatch:
         return AsyncMock()
 
     @pytest.mark.asyncio
-    async def test_import_fallback(self, mock_session, mock_redis):
+    async def test_real_impl_now(self, mock_session, mock_redis):
+        # P3-B3 + P3-A2/A-3: real trade-idea engine. Mocked session →
+        # error path; contract is no fallback sentinel.
         result = await dispatch(
             "propose_ideas",
             {"risk_profile": "balanced"},
             session=mock_session, redis=mock_redis,
         )
-        assert result["available"] is False
-        assert "not yet deployed" in result["error"]
+        assert isinstance(result, dict)
+        assert "not yet deployed" not in str(result.get("error", ""))
 
     @pytest.mark.asyncio
     async def test_invalid_profile_rejected(self, mock_session, mock_redis):

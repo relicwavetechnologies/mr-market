@@ -464,6 +464,7 @@ async def dispatch(
     if name == "analyse_portfolio":
         return await _analyse_portfolio_payload(
             session,
+            redis,
             portfolio_id=int(args["portfolio_id"]),
         )
     if name == "propose_ideas":
@@ -833,33 +834,53 @@ async def _run_screener_payload(
     limit: int,
     risk_profile: str | None = None,
 ) -> dict[str, Any]:
-    """Run a screener by name or expression. Calls Dev A's screener engine."""
+    """Run a saved screener (`name`) or an inline expression (`expr`)
+    against the active universe. Bridges to `app.analytics.screener`
+    (Dev A) — the real engine has been live since P3-A2/A-3."""
+    from sqlalchemy import select
+
+    from app.analytics.screener import (
+        ScreenerError,
+        result_to_dict,
+        run_screener,
+    )
+    from app.db.models.screener import Screener
+
     if not name and not expr:
-        return {"available": False, "error": "provide either 'name' (saved screener) or 'expr' (filter expression)"}
+        return {
+            "available": False,
+            "error": "provide either 'name' (saved screener) or 'expr' (filter expression)",
+        }
     limit = max(1, min(limit, 50))
+
     try:
-        from app.analytics.screener import evaluate_expression, get_saved_screener
         if name and not expr:
-            saved = await get_saved_screener(session, name)
+            saved = (
+                await session.execute(
+                    select(Screener).where(Screener.name == name)
+                )
+            ).scalar_one_or_none()
             if saved is None:
-                return {"available": False, "error": f"no saved screener named '{name}'"}
+                return {
+                    "available": False,
+                    "error": f"no saved screener named '{name}'",
+                }
             expr = saved.expr
         expr = _apply_risk_guard(expr, risk_profile)
-        results = await evaluate_expression(session, expr, limit=limit)
+        result = await run_screener(session, expr, limit=limit)
+        out = result_to_dict(result)
         return {
             "available": True,
             "expr": expr,
             "screener_name": name,
             "risk_profile_applied": risk_profile,
-            "tickers": results.tickers,
-            "universe_size": results.universe_size,
-            "exec_ms": results.exec_ms,
+            "tickers": out["tickers"],
+            "universe_size": out["universe_size"],
+            "exec_ms": out["exec_ms"],
+            "matched": out["matched"],
         }
-    except ImportError:
-        return {
-            "available": False,
-            "error": "screener engine not yet deployed — coming in the data-engine track",
-        }
+    except ScreenerError as e:
+        return {"available": False, "error": f"screener parse: {e!s}"}
     except Exception as e:  # noqa: BLE001
         return {"available": False, "error": f"screener error: {e!s}"}
 
@@ -876,30 +897,115 @@ def _apply_risk_guard(expr: str, risk_profile: str | None) -> str:
 
 async def _analyse_portfolio_payload(
     session: AsyncSession,
+    redis: aioredis.Redis,
     *,
     portfolio_id: int,
 ) -> dict[str, Any]:
-    """Analyse a user portfolio. Calls Dev A's portfolio diagnostics."""
+    """Analyse a user portfolio. Bridges to `app.analytics.portfolio`
+    (Dev A) — the real engine has been live since P3-A5. Loads
+    positions + live quotes + yfinance beta/div + 1-year price history,
+    then calls `compute_diagnostics` and returns its dict directly."""
+    import datetime as dt
+    from decimal import Decimal, InvalidOperation
+
+    from sqlalchemy import select
+
+    from app.analytics.portfolio import Position, compute_diagnostics
+    from app.data.info_service import get_info
+    from app.data.quote_service import get_quote
+    from app.db.models import HoldingUser, Portfolio, PriceDaily, Stock
+
+    def _to_decimal(v) -> Decimal | None:
+        if v is None:
+            return None
+        if isinstance(v, Decimal):
+            return v
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, ValueError, TypeError):
+            return None
+
     try:
-        from app.analytics.portfolio import get_diagnostics
-        diag = await get_diagnostics(session, portfolio_id)
-        if diag is None:
+        portfolio = await session.get(Portfolio, portfolio_id)
+        if portfolio is None:
             return {"available": False, "error": f"portfolio {portfolio_id} not found"}
-        return {
-            "available": True,
-            "portfolio_id": portfolio_id,
-            "concentration": diag.concentration,
-            "sector_pct": diag.sector_pct,
-            "top_5_pct": diag.top_5_pct,
-            "beta_blend": diag.beta_blend,
-            "div_yield": diag.div_yield,
-            "drawdown_1y": diag.drawdown_1y,
+
+        holdings = (
+            await session.execute(
+                select(HoldingUser).where(HoldingUser.portfolio_id == portfolio_id)
+            )
+        ).scalars().all()
+        if not holdings:
+            return {"available": False, "error": "portfolio has no positions"}
+
+        tickers = [h.ticker for h in holdings]
+        stocks = (
+            await session.execute(select(Stock).where(Stock.ticker.in_(tickers)))
+        ).scalars().all()
+        sector_map = {s.ticker: s.sector for s in stocks}
+
+        # Live quotes + yfinance info, in parallel.
+        import asyncio as _asyncio
+
+        async def _q(t: str):
+            try:
+                q = await get_quote(t, redis, session)
+                return t, _to_decimal(q.get("price"))
+            except Exception:  # noqa: BLE001
+                return t, None
+
+        async def _i(t: str):
+            try:
+                return t, await get_info(session, t)
+            except Exception:  # noqa: BLE001
+                return t, None
+
+        quotes = dict(await _asyncio.gather(*[_q(t) for t in tickers]))
+        infos = dict(await _asyncio.gather(*[_i(t) for t in tickers]))
+        beta_map = {
+            t: _to_decimal(((infos.get(t) or {}).get("yfinance") or {}).get("beta"))
+            for t in tickers
         }
-    except ImportError:
-        return {
-            "available": False,
-            "error": "portfolio analytics not yet deployed — coming in the data-engine track",
+        div_yield_map = {
+            t: _to_decimal(((infos.get(t) or {}).get("yfinance") or {}).get("dividend_yield"))
+            for t in tickers
         }
+
+        cutoff = dt.date.today() - dt.timedelta(days=365)
+        price_history: dict[str, list[tuple[str, Decimal]]] = {t: [] for t in tickers}
+        rows = (
+            await session.execute(
+                select(PriceDaily.ticker, PriceDaily.ts, PriceDaily.close)
+                .where(PriceDaily.ticker.in_(tickers))
+                .where(PriceDaily.ts >= cutoff)
+                .order_by(PriceDaily.ticker, PriceDaily.ts)
+            )
+        ).all()
+        for ticker, ts, close in rows:
+            if close is None:
+                continue
+            d = ts.date() if hasattr(ts, "date") else ts
+            price_history[ticker].append((d.isoformat(), close))
+
+        positions = [
+            Position(
+                ticker=h.ticker,
+                quantity=int(h.quantity),
+                avg_price=h.avg_price,
+                current_price=quotes.get(h.ticker),
+            )
+            for h in holdings
+        ]
+        diag = compute_diagnostics(
+            positions,
+            sector_map=sector_map,
+            beta_map=beta_map,
+            div_yield_map=div_yield_map,
+            price_history=price_history,
+        )
+        diag["available"] = True
+        diag["portfolio_id"] = portfolio_id
+        return diag
     except Exception as e:  # noqa: BLE001
         return {"available": False, "error": f"portfolio error: {e!s}"}
 
@@ -918,24 +1024,26 @@ async def _propose_ideas_payload(
     """
     if risk_profile not in ("conservative", "balanced", "aggressive"):
         return {"available": False, "error": f"invalid risk_profile: {risk_profile}"}
-    try:
-        from app.analytics.screener import evaluate_expression, get_saved_screener
-    except ImportError:
-        return {
-            "available": False,
-            "error": "trade-idea engine not yet deployed — coming in the data-engine track",
-        }
+
+    from sqlalchemy import select
+
+    from app.analytics.screener import ScreenerError, run_screener
+    from app.db.models.screener import Screener
 
     try:
         screener_name = _theme_to_screener(theme, risk_profile)
-        saved = await get_saved_screener(session, screener_name)
+        saved = (
+            await session.execute(
+                select(Screener).where(Screener.name == screener_name)
+            )
+        ).scalar_one_or_none()
         if saved is None:
             return {
                 "available": False,
                 "error": f"no screener for theme '{theme or 'default'}' and profile '{risk_profile}'",
             }
         expr = _apply_risk_guard(saved.expr, risk_profile)
-        results = await evaluate_expression(session, expr, limit=5)
+        results = await run_screener(session, expr, limit=5)
         if not results.tickers:
             return {
                 "available": True,
@@ -948,7 +1056,7 @@ async def _propose_ideas_payload(
 
         ideas = []
         for t in results.tickers:
-            sym = t["symbol"]
+            sym = t.symbol
             tech = await _get_technicals_payload(session, sym, days=1)
             levels = await _get_levels_payload(session, sym, window=90)
             idea = _build_idea(sym, tech, levels, risk_profile)
@@ -963,6 +1071,8 @@ async def _propose_ideas_payload(
             "screener_used": screener_name,
             "ideas": ideas,
         }
+    except ScreenerError as e:
+        return {"available": False, "error": f"screener parse: {e!s}"}
     except Exception as e:  # noqa: BLE001
         return {"available": False, "error": f"idea engine error: {e!s}"}
 
@@ -1079,13 +1189,71 @@ async def _backtest_screener_payload(
     name: str,
     period_days: int,
 ) -> dict[str, Any]:
-    """Backtest a saved screener. Calls Dev A's backtest engine."""
+    """Backtest a saved screener. Bridges to `app.analytics.backtest`
+    (Dev A) — real engine live since P3-A6. Loads price history +
+    sector/promoter/public maps from the DB and calls `run_backtest`."""
+    import datetime as dt
+
+    from sqlalchemy import desc, select
+
+    from app.analytics.backtest import run_backtest
+    from app.db.models import Holding, PriceDaily, Stock
+    from app.db.models.screener import Screener
+
     period_days = max(30, min(period_days, 365))
     try:
-        from app.analytics.backtest import run_backtest
-        result = await run_backtest(session, screener_name=name, period_days=period_days)
-        if result is None:
+        screener = (
+            await session.execute(select(Screener).where(Screener.name == name))
+        ).scalar_one_or_none()
+        if screener is None:
             return {"available": False, "error": f"no saved screener named '{name}'"}
+
+        # Pull price history (last period_days + 200 for SMA-200 warmup).
+        cutoff = dt.date.today() - dt.timedelta(days=period_days + 200)
+        rows = (
+            await session.execute(
+                select(PriceDaily.ticker, PriceDaily.ts, PriceDaily.close)
+                .where(PriceDaily.ts >= cutoff)
+                .where(PriceDaily.source == "nsearchives")
+                .order_by(PriceDaily.ticker, PriceDaily.ts)
+            )
+        ).all()
+        price_history: dict[str, list[tuple[dt.date, float]]] = {}
+        for ticker, ts, close in rows:
+            if close is None:
+                continue
+            d = ts.date() if hasattr(ts, "date") else ts
+            price_history.setdefault(ticker, []).append((d, float(close)))
+
+        # Sector map (frozen-in-time approximation; documented compromise).
+        stocks = (await session.execute(select(Stock))).scalars().all()
+        sector_map = {s.ticker: s.sector for s in stocks}
+
+        # Latest holdings row per ticker.
+        holdings = (
+            await session.execute(
+                select(Holding).order_by(desc(Holding.quarter_end))
+            )
+        ).scalars().all()
+        promoter_map: dict[str, float] = {}
+        public_map: dict[str, float] = {}
+        for h in holdings:
+            if h.ticker in promoter_map:
+                continue
+            if h.promoter_pct is not None:
+                promoter_map[h.ticker] = float(h.promoter_pct)
+            if h.public_pct is not None:
+                public_map[h.ticker] = float(h.public_pct)
+
+        result = run_backtest(
+            name=screener.name,
+            expr=screener.expr,
+            period_days=period_days,
+            price_history=price_history,
+            sector_map=sector_map,
+            promoter_map=promoter_map,
+            public_map=public_map,
+        )
         return {
             "available": True,
             "screener_name": name,
@@ -1094,11 +1262,7 @@ async def _backtest_screener_payload(
             "mean_return": result.mean_return,
             "worst_drawdown": result.worst_drawdown,
             "n_signals": result.n_signals,
-        }
-    except ImportError:
-        return {
-            "available": False,
-            "error": "backtest engine not yet deployed — coming in the data-engine track",
+            "sharpe_proxy": result.sharpe_proxy,
         }
     except Exception as e:  # noqa: BLE001
         return {"available": False, "error": f"backtest error: {e!s}"}
@@ -1110,38 +1274,45 @@ async def _add_to_watchlist_payload(
     ticker: str,
     user_id: str | None,
 ) -> dict[str, Any]:
-    """Add a ticker to the user's watchlist."""
+    """Add a ticker to the user's watchlist. Validates against the
+    active universe; idempotent via Postgres ON CONFLICT DO NOTHING."""
+    import uuid as _uuid
+
+    from sqlalchemy import func, select as sa_select
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+    from app.db.models import Stock, Watchlist
+
     sym = ticker.upper().strip()
     if not user_id:
         return {"ok": False, "error": "watchlist requires a signed-in user"}
     try:
-        from app.db.models.watchlist import Watchlist
-        from sqlalchemy import func, select as sa_select
+        uid = _uuid.UUID(str(user_id))
+    except (ValueError, TypeError):
+        return {"ok": False, "error": "invalid user id"}
 
-        existing = (
-            await session.execute(
-                sa_select(Watchlist).where(
-                    Watchlist.user_id == user_id,
-                    Watchlist.ticker == sym,
-                )
-            )
-        ).scalar_one_or_none()
-        if existing is None:
-            session.add(Watchlist(user_id=user_id, ticker=sym))
-            await session.commit()
+    try:
+        # Universe gate.
+        stock = await session.get(Stock, sym)
+        if stock is None or not stock.active:
+            return {
+                "ok": False,
+                "error": f"{sym!r} not in active NIFTY-100 universe",
+            }
+
+        stmt = pg_insert(Watchlist).values(user_id=uid, ticker=sym)
+        stmt = stmt.on_conflict_do_nothing(index_elements=["user_id", "ticker"])
+        await session.execute(stmt)
+        await session.commit()
+
         count = (
             await session.execute(
-                sa_select(func.count()).select_from(Watchlist).where(
-                    Watchlist.user_id == user_id,
-                )
+                sa_select(func.count())
+                .select_from(Watchlist)
+                .where(Watchlist.user_id == uid)
             )
         ).scalar() or 0
-        return {"ok": True, "ticker": sym, "watchlist_size": count}
-    except ImportError:
-        return {
-            "ok": False,
-            "error": "watchlist table not yet deployed — coming in the data-engine track",
-        }
+        return {"ok": True, "ticker": sym, "watchlist_size": int(count)}
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": f"watchlist error: {e!s}"}
 
