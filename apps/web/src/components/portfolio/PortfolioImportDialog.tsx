@@ -133,10 +133,12 @@ export function PortfolioImportDialog({ open, onOpenChange, onAnalyze }: Props) 
 
   const handleAnalyze = () => {
     if (!result?.portfolio_id) return;
-    const prompt = `Diagnose my portfolio (id=${result.portfolio_id}) — concentration, sector mix, beta, drawdown.`;
+    // No id in the prompt — the server defaults to the user's most
+    // recently imported portfolio (which is the one we just imported).
+    // If the user has multiple portfolios, the analyse_portfolio tool
+    // returns a picker payload and the model asks them which one.
+    const prompt = `Diagnose my portfolio — concentration, sector mix, beta, drawdown.`;
     onOpenChange(false);
-    // Defer the chat dispatch slightly so the dialog close animation
-    // doesn't overlap with the SSE stream starting.
     setTimeout(() => onAnalyze?.(prompt), 200);
   };
 
