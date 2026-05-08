@@ -462,22 +462,32 @@ class TestSummarisePhase3Tools:
         assert len(s["top_tickers"]) == 5
 
     def test_analyse_portfolio_available(self):
+        # Real backend payload shape: every numeric is a Decimal-string,
+        # `concentration` is an object, `sector_pct` is a list of
+        # {sector, pct} entries, percentages are already in % form.
         payload = {
             "available": True,
             "portfolio_id": 42,
-            "concentration": 0.35,
-            "sector_pct": {"IT": 40, "Banking": 30, "Pharma": 30},
-            "top_5_pct": 0.72,
-            "beta_blend": 1.15,
-            "div_yield": 0.018,
-            "drawdown_1y": -0.12,
+            "as_of": "2026-05-08",
+            "n_positions": 5,
+            "total_value_inr": "284200.00",
+            "concentration": {"top_5_pct": "62.4", "herfindahl": "0.18"},
+            "sector_pct": [
+                {"sector": "IT", "pct": "40.0"},
+                {"sector": "Banking", "pct": "30.0"},
+                {"sector": "Pharma", "pct": "30.0"},
+            ],
+            "beta_blend": "1.15",
+            "div_yield": "1.85",
+            "drawdown_1y": "-7.4",
         }
         s = _summarise("analyse_portfolio", payload)
         assert s["available"] is True
         assert s["portfolio_id"] == 42
-        assert s["concentration"] == 0.35
-        assert s["sector_pct"] == {"IT": 40, "Banking": 30, "Pharma": 30}
-        assert s["top_5_pct"] == 0.72
+        assert s["concentration"] == {"top_5_pct": "62.4", "herfindahl": "0.18"}
+        assert isinstance(s["sector_pct"], list)
+        assert s["sector_pct"][0]["sector"] == "IT"
+        assert s["beta_blend"] == "1.15"
 
     def test_analyse_portfolio_unavailable(self):
         payload = {"available": False, "error": "not deployed"}

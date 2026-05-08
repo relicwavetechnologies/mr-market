@@ -132,15 +132,45 @@ export interface ScreenerSummary {
   error?: string;
 }
 
+export interface PortfolioConcentration {
+  top_5_pct?: string;   // already a percentage, as a Decimal-string ("100.0")
+  herfindahl?: string;  // 0..1, as a Decimal-string ("0.4412")
+}
+
+export interface PortfolioSectorEntry {
+  sector: string;
+  pct: string;          // already a percentage, as a Decimal-string ("38.5")
+}
+
+export interface PortfolioPickerEntry {
+  id: number;
+  name: string;
+  source: string | null;
+  created_at: string | null;
+}
+
 export interface PortfolioSummary {
+  // Standard diagnostics shape — every numeric is a Decimal-string.
   available?: boolean;
   portfolio_id?: number;
-  concentration?: number;
-  sector_pct?: Record<string, number>;
-  top_5_pct?: number;
-  beta_blend?: number;
-  div_yield?: number;
-  drawdown_1y?: number;
+  as_of?: string;
+  n_positions?: number;
+  total_value_inr?: string;
+  concentration?: PortfolioConcentration;
+  sector_pct?: PortfolioSectorEntry[];
+  beta_blend?: string;     // value-weighted; "1.04"
+  div_yield?: string;      // already %; "1.85"
+  drawdown_1y?: string;    // already %; "-7.4"
+  diagnostics_notes?: {
+    missing_beta_count?: number;
+    n_priced?: number;
+  };
+
+  // Picker / empty-state variants (analyse_portfolio without explicit id).
+  needs_pick?: boolean;
+  needs_import?: boolean;
+  portfolios?: PortfolioPickerEntry[];
+  message?: string;
   error?: string;
 }
 

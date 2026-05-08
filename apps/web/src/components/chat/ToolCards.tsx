@@ -613,39 +613,103 @@ export function ScreenerCard({ data }: { data: ScreenerSummary }) {
 export function PortfolioCard({ data }: { data: PortfolioSummary }) {
   const [showSectors, setShowSectors] = useState(false);
 
-  if (!data.available) {
+  // Variant 1: 0 portfolios for the user → ask them to import.
+  if (data.needs_import) {
     return (
       <CardShell title="Portfolio">
-        <EmptyState message={data.error ?? 'Portfolio analytics not available yet.'} />
+        <EmptyState
+          message={
+            data.message ??
+            data.error ??
+            'No portfolio yet. Click the briefcase icon in the chat input to import one.'
+          }
+        />
       </CardShell>
     );
   }
 
-  const sectors = data.sector_pct ?? {};
-  const sectorEntries = Object.entries(sectors).sort(([, a], [, b]) => b - a);
-  const drawdownTone = (data.drawdown_1y ?? 0) < -0.1 ? 'bad' : 'default';
+  // Variant 2: ≥2 portfolios — show a picker list.
+  if (data.needs_pick && data.portfolios && data.portfolios.length > 0) {
+    return (
+      <CardShell title="Portfolios">
+        <p className="mb-2 text-[12px] text-muted-foreground">
+          {data.message ?? 'Pick one to analyse:'}
+        </p>
+        <ul className="flex flex-col gap-1.5">
+          {data.portfolios.map((p) => (
+            <li
+              key={p.id}
+              className="flex items-baseline justify-between gap-2 rounded-md border border-border/60 bg-muted/20 px-2.5 py-1.5"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[12px] font-medium text-foreground">
+                  {p.name || `Portfolio #${p.id}`}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  id {p.id}
+                  {p.source && ` · ${p.source}`}
+                  {p.created_at && ` · imported ${p.created_at.slice(0, 10)}`}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </CardShell>
+    );
+  }
+
+  // Variant 3: standard diagnostics. All numerics are Decimal-strings on
+  // the wire and percentages already in % form (e.g. "100.0", "1.85").
+  if (!data.available) {
+    return (
+      <CardShell title="Portfolio">
+        <EmptyState
+          message={
+            data.error ?? data.message ?? 'Portfolio analytics not available yet.'
+          }
+        />
+      </CardShell>
+    );
+  }
+
+  const top5 = numFromString(data.concentration?.top_5_pct);
+  const beta = numFromString(data.beta_blend);
+  const divYield = numFromString(data.div_yield);
+  const drawdown = numFromString(data.drawdown_1y);
+  const sectorEntries = (data.sector_pct ?? [])
+    .map((e) => ({ sector: e.sector, pct: numFromString(e.pct) }))
+    .sort((a, b) => b.pct - a.pct);
+  const drawdownTone = drawdown < -10 ? 'bad' : 'default';
 
   return (
-    <CardShell title="Portfolio">
+    <CardShell
+      title={`Portfolio${data.portfolio_id != null ? ` #${data.portfolio_id}` : ''}`}
+      asOf={data.as_of}
+    >
       <div className="grid grid-cols-3 gap-3">
         <Metric
           label="Top-5 weight"
-          value={data.top_5_pct != null ? `${(data.top_5_pct * 100).toFixed(1)}%` : '—'}
-          tone={data.top_5_pct != null && data.top_5_pct > 0.7 ? 'warn' : 'default'}
-          hint={data.top_5_pct != null && data.top_5_pct > 0.7 ? 'concentrated' : undefined}
+          value={`${top5.toFixed(1)}%`}
+          tone={top5 > 70 ? 'warn' : 'default'}
+          hint={top5 > 70 ? 'concentrated' : undefined}
         />
-        <Metric
-          label="Beta"
-          value={data.beta_blend?.toFixed(2) ?? '—'}
-        />
-        <Metric
-          label="Div yield"
-          value={data.div_yield != null ? `${(data.div_yield * 100).toFixed(2)}%` : '—'}
-        />
+        <Metric label="Beta" value={beta.toFixed(2)} />
+        <Metric label="Div yield" value={`${divYield.toFixed(2)}%`} />
         <Metric
           label="1Y drawdown"
-          value={data.drawdown_1y != null ? `${(data.drawdown_1y * 100).toFixed(1)}%` : '—'}
+          value={`${drawdown.toFixed(1)}%`}
           tone={drawdownTone}
+        />
+        <Metric label="Positions" value={data.n_positions ?? '—'} />
+        <Metric
+          label="Total value"
+          value={
+            data.total_value_inr
+              ? `₹${Number(data.total_value_inr).toLocaleString('en-IN', {
+                  maximumFractionDigits: 0,
+                })}`
+              : '—'
+          }
         />
       </div>
       {sectorEntries.length > 0 && (
@@ -664,7 +728,7 @@ export function PortfolioCard({ data }: { data: PortfolioSummary }) {
                 </tr>
               </thead>
               <tbody>
-                {sectorEntries.map(([sector, pct]) => (
+                {sectorEntries.map(({ sector, pct }) => (
                   <tr key={sector} className="border-t border-border/30 text-foreground/80">
                     <td className="py-1 text-left">{sector}</td>
                     <td className="py-1 text-right">{pct.toFixed(1)}%</td>
@@ -677,6 +741,12 @@ export function PortfolioCard({ data }: { data: PortfolioSummary }) {
       )}
     </CardShell>
   );
+}
+
+function numFromString(s: string | undefined | null): number {
+  if (s === undefined || s === null || s === '') return 0;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
 }
 
 // ---------------------------------------------------------------------------
