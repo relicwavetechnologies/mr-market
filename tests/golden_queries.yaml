@@ -1,4 +1,4 @@
-# Phase-2 internal-tool golden eval — 80 prompts.
+# Phase-2 + Phase-3 internal-tool golden eval — 120 prompts.
 #
 # Each entry asserts:
 #   - intent           — exact match against the router's output
@@ -12,6 +12,7 @@
 #                        injected (or that the body has the analyst phrasing)
 #
 # Pass/fail is binary per prompt. Phase-2 exit gate: ≥ 75 / 80.
+# Phase-3 exit gate (P3-B5): ≥ 110 / 120.
 #
 # Internal-tool framing notes (vs Phase-1 strict mode):
 #   - Buy/sell/target/SL questions are now `intent: advisory` and are
@@ -634,3 +635,275 @@
   prompt: "Give me Kotak Bank's price, RSI and promoter holding"
   blocked: false
   must_contain: ["KOTAKBANK|Kotak"]
+
+# =========================================================================
+# === P3-B5 — Phase-3 surface — 40 new prompts ============================
+# =========================================================================
+
+# -------------------------------------------------------------------------
+# Screener (12) — run_screener tool
+# -------------------------------------------------------------------------
+
+- id: q81_screener_oversold
+  prompt: "Run the oversold_quality screener"
+  intent: screener
+  tools_called: [run_screener]
+  blocked: false
+  must_contain: ["oversold|RSI"]
+
+- id: q82_screener_value_rebound
+  prompt: "Show me value_rebound stocks"
+  intent: screener
+  tools_called: [run_screener]
+  blocked: false
+  must_contain: ["value|rebound|sma|200"]
+
+- id: q83_screener_momentum
+  prompt: "Run momentum_breakout"
+  intent: screener
+  tools_called: [run_screener]
+  blocked: false
+  must_contain: ["momentum|breakout|RSI"]
+
+- id: q84_screener_pledge
+  prompt: "Use the high_pledge_avoid screener"
+  intent: screener
+  tools_called: [run_screener]
+  blocked: false
+  must_contain: ["pledge|promoter"]
+
+- id: q85_screener_fii
+  prompt: "Run fii_buying screener"
+  intent: screener
+  tools_called: [run_screener]
+  blocked: false
+  must_contain: ["FII|public|holding|buying"]
+
+- id: q86_screener_promoter_inc
+  prompt: "Find stocks where promoter is increasing"
+  intent: screener
+  tools_called: [run_screener]
+  blocked: false
+  must_contain: ["promoter"]
+
+- id: q87_screener_inline_expr
+  prompt: "Find stocks with RSI below 30 and promoter holding above 50"
+  intent: screener
+  tools_called: [run_screener]
+  blocked: false
+  must_contain: ["RSI|rsi"]
+
+- id: q88_screener_above_sma
+  prompt: "Show me stocks trading above their 200-day moving average"
+  intent: screener
+  tools_called: [run_screener]
+  blocked: false
+  must_contain: ["sma|200|moving average|above"]
+
+- id: q89_screener_sector_filter
+  prompt: "Find Energy sector stocks with RSI above 50"
+  intent: screener
+  tools_called: [run_screener]
+  blocked: false
+  must_contain: ["Energy"]
+
+- id: q90_screener_oversold_question
+  prompt: "Which large-caps are oversold right now?"
+  intent: screener
+  tools_called: [run_screener]
+  blocked: false
+  must_contain: ["RSI|oversold"]
+
+- id: q91_screener_unknown_name
+  prompt: "Run my custom_strategy_xyz screener"
+  blocked: false
+  must_contain: ["not found|unknown|don't have|cannot|specify|specific"]
+
+- id: q92_screener_list_query
+  prompt: "What screeners are available?"
+  blocked: false
+  must_contain: ["oversold|value|momentum|pledge|fii|promoter"]
+
+# -------------------------------------------------------------------------
+# Portfolio (8) — analyse_portfolio tool / personal-investing intents
+# -------------------------------------------------------------------------
+
+- id: q93_portfolio_diagnostics
+  prompt: "Analyse my portfolio's concentration and sector exposure"
+  blocked: false
+  must_contain: ["portfolio|concentration|sector|specify|need"]
+
+- id: q94_portfolio_diversified
+  prompt: "Is my portfolio well diversified?"
+  blocked: false
+  must_contain: ["portfolio|diversif|sector|specify|need"]
+
+- id: q95_portfolio_top_holdings
+  prompt: "What are my top 5 holdings by value?"
+  blocked: false
+  must_contain: ["portfolio|holding|specify|need|provide"]
+
+- id: q96_portfolio_sector_drift
+  prompt: "Has my sector mix drifted away from the Nifty's?"
+  blocked: false
+  must_contain: ["portfolio|sector|specify|need|holding"]
+
+- id: q97_portfolio_beta
+  prompt: "What's the beta of my portfolio?"
+  blocked: false
+  must_contain: ["beta|portfolio|specify|need|holding"]
+
+- id: q98_portfolio_drawdown
+  prompt: "What was my portfolio's max drawdown last year?"
+  blocked: false
+  must_contain: ["drawdown|portfolio|specify|need|holding"]
+
+- id: q99_portfolio_div_yield
+  prompt: "What's the dividend yield on my portfolio?"
+  blocked: false
+  must_contain: ["dividend|yield|portfolio|specify|need|holding"]
+
+- id: q100_portfolio_concentration_warn
+  prompt: "Am I over-concentrated in IT?"
+  blocked: false
+  must_contain: ["portfolio|IT|sector|concentration|specify|need"]
+
+# -------------------------------------------------------------------------
+# Trade-idea engine (12) — propose_ideas
+# -------------------------------------------------------------------------
+
+- id: q101_idea_three_swing
+  prompt: "Give me 3 swing-trade ideas"
+  intent: advisory
+  blocked: false
+  must_contain: ["entry|target|stop|SL|swing"]
+  disclaimer: true
+
+- id: q102_idea_value_theme
+  prompt: "Suggest 3 value-theme stock picks"
+  intent: advisory
+  blocked: false
+  must_contain: ["value|target|entry|SL"]
+  disclaimer: true
+
+- id: q103_idea_momentum_theme
+  prompt: "Give me momentum trade ideas"
+  intent: advisory
+  blocked: false
+  must_contain: ["momentum|entry|target|RSI"]
+  disclaimer: true
+
+- id: q104_idea_conservative
+  prompt: "Conservative trade ideas for me"
+  intent: advisory
+  blocked: false
+  must_contain: ["conservative|entry|stop|target|disclaim"]
+  disclaimer: true
+
+- id: q105_idea_aggressive
+  prompt: "Aggressive trade ideas — high upside"
+  intent: advisory
+  blocked: false
+  must_contain: ["entry|target|stop|aggressive|risk"]
+  disclaimer: true
+
+- id: q106_idea_breakout
+  prompt: "Find me 3 breakout candidates"
+  intent: advisory
+  blocked: false
+  must_contain: ["breakout|RSI|target|entry"]
+  disclaimer: true
+
+- id: q107_idea_oversold
+  prompt: "3 mean-reversion ideas in oversold names"
+  intent: advisory
+  blocked: false
+  must_contain: ["oversold|RSI|entry|target"]
+  disclaimer: true
+
+- id: q108_idea_sector_pick
+  prompt: "Trade ideas in the financial services sector"
+  intent: advisory
+  blocked: false
+  must_contain: ["financial|bank|target|entry|sector"]
+  disclaimer: true
+
+- id: q109_idea_with_holding_filter
+  prompt: "Trade ideas with strong promoter backing"
+  intent: advisory
+  blocked: false
+  must_contain: ["promoter|entry|target"]
+  disclaimer: true
+
+- id: q110_idea_one_setup
+  prompt: "Build me one swing-trade setup with entry, SL, and target"
+  intent: advisory
+  blocked: false
+  must_contain: ["entry|target|stop|SL|setup"]
+  disclaimer: true
+
+- id: q111_idea_view_reliance
+  prompt: "Build a trade-idea card on Reliance"
+  intent: advisory
+  blocked: false
+  must_contain: ["RELIANCE|Reliance", "entry|target|stop"]
+  disclaimer: true
+
+- id: q112_idea_view_tcs
+  prompt: "Trade view on TCS — entry and target"
+  intent: advisory
+  blocked: false
+  must_contain: ["TCS", "entry|target"]
+  disclaimer: true
+
+# -------------------------------------------------------------------------
+# Backtest (4) — backtest_screener
+# -------------------------------------------------------------------------
+
+- id: q113_backtest_value_rebound
+  prompt: "How did the value_rebound screener perform last year?"
+  intent: backtest
+  blocked: false
+  must_contain: ["value_rebound|hit rate|return|performance"]
+
+- id: q114_backtest_oversold
+  prompt: "Backtest oversold_quality over the past 12 months"
+  intent: backtest
+  blocked: false
+  must_contain: ["oversold|hit rate|return|performance"]
+
+- id: q115_backtest_momentum
+  prompt: "What's the historical hit rate of momentum_breakout?"
+  intent: backtest
+  blocked: false
+  must_contain: ["momentum|hit rate|return"]
+
+- id: q116_backtest_drawdown
+  prompt: "What's the worst drawdown of fii_buying screener?"
+  intent: backtest
+  blocked: false
+  must_contain: ["drawdown|fii_buying|fii"]
+
+# -------------------------------------------------------------------------
+# Watchlist (4) — add_to_watchlist
+# -------------------------------------------------------------------------
+
+- id: q117_watchlist_add
+  prompt: "Add Reliance to my watchlist"
+  blocked: false
+  must_contain: ["RELIANCE|Reliance", "watch"]
+
+- id: q118_watchlist_add_tcs
+  prompt: "Watch TCS for me"
+  blocked: false
+  must_contain: ["TCS", "watch"]
+
+- id: q119_watchlist_view
+  prompt: "Show me my watchlist"
+  blocked: false
+  must_contain: ["watch|empty|specify|don't|sign|need"]
+
+- id: q120_watchlist_remove
+  prompt: "Remove HDFC Bank from my watchlist"
+  blocked: false
+  must_contain: ["HDFC|watch|remove"]

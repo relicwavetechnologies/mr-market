@@ -197,25 +197,29 @@ class TestDispatchImportFallbacks:
         assert "invalid risk_profile" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_backtest_screener_import_fallback(self, mock_session, mock_redis):
+    async def test_backtest_screener_real_impl_now(self, mock_session, mock_redis):
+        # P3-A6 wired the real backtest engine; this is no longer the
+        # stub-fallback path. Contract: dispatch returns a dict and the
+        # "not yet deployed" sentinel is gone.
         result = await dispatch(
             "backtest_screener",
             {"name": "value_rebound"},
             session=mock_session, redis=mock_redis,
         )
-        assert result["available"] is False
-        assert "not yet deployed" in result["error"]
+        assert isinstance(result, dict)
+        assert "not yet deployed" not in str(result.get("error", ""))
 
     @pytest.mark.asyncio
-    async def test_add_to_watchlist_import_fallback(self, mock_session, mock_redis):
+    async def test_add_to_watchlist_real_impl_now(self, mock_session, mock_redis):
+        # P3-A7 wired the real watchlist; same regression-guard.
         result = await dispatch(
             "add_to_watchlist",
             {"ticker": "RELIANCE"},
             session=mock_session, redis=mock_redis,
             user_id="user-123",
         )
-        assert result["ok"] is False
-        assert "not yet deployed" in result["error"]
+        assert isinstance(result, dict)
+        assert "not yet deployed" not in str(result.get("error", ""))
 
     @pytest.mark.asyncio
     async def test_add_to_watchlist_no_user(self, mock_session, mock_redis):
