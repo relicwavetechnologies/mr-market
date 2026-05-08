@@ -48,6 +48,7 @@ async def build_history_messages(
     system_tokens: int = 0,
     memory_tokens: int = 0,
     force_compact: bool = False,
+    exclude_latest_user_turn: bool = True,
 ) -> tuple[list[dict[str, Any]], ContextInfo]:
     current_msg_tokens = estimate_tokens(current_message)
     if conversation_id is None:
@@ -67,7 +68,7 @@ async def build_history_messages(
     # The chat endpoint persists the current user turn before calling the
     # orchestrator. Keep it out of the history block because the orchestrator
     # appends the current message separately after history injection.
-    if messages and messages[-1].role == "user":
+    if exclude_latest_user_turn and messages and messages[-1].role == "user":
         messages = messages[:-1]
 
     older = messages[:-RECENT_HISTORY_MESSAGES]
@@ -150,23 +151,26 @@ async def compact_history(
     if not transcript:
         summary = "No earlier conversation context."
     else:
-        resp = await client.chat.completions.create(
-            model=model,
-            temperature=0.1,
-            max_tokens=260,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Summarize this conversation history for Midas. Preserve "
-                        "tickers, prices, RSI values, conclusions, user preferences, "
-                        "and unresolved asks. Keep it under 200 words."
-                    ),
-                },
-                {"role": "user", "content": transcript},
-            ],
-        )
-        summary = (resp.choices[0].message.content or "").strip()
+        try:
+            resp = await client.chat.completions.create(
+                model=model,
+                temperature=0.1,
+                max_tokens=260,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Summarize this conversation history for Midas. Preserve "
+                            "tickers, prices, RSI values, conclusions, user preferences, "
+                            "and unresolved asks. Keep it under 200 words."
+                        ),
+                    },
+                    {"role": "user", "content": transcript},
+                ],
+            )
+            summary = (resp.choices[0].message.content or "").strip()
+        except Exception:  # noqa: BLE001
+            summary = "Earlier conversation exists; summary unavailable due to transient model error."
         if not summary:
             summary = (
                 "Earlier conversation existed, but no useful summary was produced."
@@ -298,7 +302,11 @@ def _count_user_turns(messages: list[Message]) -> int:
 
 
 def _cache_key(conversation_id: uuid.UUID, older_messages: list[Message]) -> str:
-    return f"ctx:compact:{conversation_id}:v{len(older_messages)}"
+    fingerprint = "|".join(
+        f"{m.id.hex}:{int(m.created_at.timestamp()) if m.created_at else 0}"
+        for m in older_messages
+    )
+    return f"ctx:compact:{conversation_id}:{hash(fingerprint)}"
 
 
 def _decode_redis(value: Any) -> str:

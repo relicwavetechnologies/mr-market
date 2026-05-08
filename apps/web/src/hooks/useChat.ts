@@ -97,6 +97,7 @@ export function useChat() {
             statusMessage = ev.message;
             patchMessage(convId!, assistantId, {
               toolEvents: [
+                ...toolEvents,
                 {
                   name: 'status',
                   status: 'running',
@@ -128,7 +129,10 @@ export function useChat() {
             return;
           }
           case 'context_info': {
-            if (convId) setContextInfo(convId, ev);
+            if (convId) {
+              const { type: _type, ...info } = ev;
+              setContextInfo(convId, info);
+            }
             return;
           }
           case 'intent':

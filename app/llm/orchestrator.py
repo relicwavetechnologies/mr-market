@@ -531,6 +531,9 @@ async def run_chat(
                         final_text_parts.append(delta)
                         yield {"type": "delta", "text": delta}
 
+            if not final_text_parts:
+                yield {"type": "error", "message": "Model returned an empty response. Please try again."}
+                return
             buffered = "".join(final_text_parts)
             guarded = apply_guardrails(
                 buffered,
