@@ -209,15 +209,27 @@ def _summarise(name: str, payload: dict[str, Any]) -> dict[str, Any]:
             "error": payload.get("error"),
         }
     if name == "analyse_portfolio":
+        # Pass the full diagnostics dict through — frontend PortfolioCard
+        # consumes it. Includes:
+        #  - the standard keys (concentration, sector_pct, beta_blend, …)
+        #  - picker payload (needs_pick, portfolios) when ≥2 portfolios
+        #  - empty-state hint (needs_import) when 0 portfolios
         return {
             "available": payload.get("available"),
             "portfolio_id": payload.get("portfolio_id"),
+            "as_of": payload.get("as_of"),
+            "n_positions": payload.get("n_positions"),
+            "total_value_inr": payload.get("total_value_inr"),
             "concentration": payload.get("concentration"),
             "sector_pct": payload.get("sector_pct"),
-            "top_5_pct": payload.get("top_5_pct"),
             "beta_blend": payload.get("beta_blend"),
             "div_yield": payload.get("div_yield"),
             "drawdown_1y": payload.get("drawdown_1y"),
+            "diagnostics_notes": payload.get("diagnostics_notes"),
+            "needs_pick": payload.get("needs_pick"),
+            "needs_import": payload.get("needs_import"),
+            "portfolios": payload.get("portfolios"),
+            "message": payload.get("message"),
             "error": payload.get("error"),
         }
     if name == "propose_ideas":
