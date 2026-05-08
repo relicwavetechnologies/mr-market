@@ -5,6 +5,7 @@ from app.db.models.document import Document, DocumentChunk
 from app.db.models.holding import Holding
 from app.db.models.message import Message
 from app.db.models.news import News
+from app.db.models.portfolio import HoldingUser, Portfolio
 from app.db.models.price import PriceDaily
 from app.db.models.screener import Screener
 from app.db.models.scrape_log import ScrapeLog
@@ -19,8 +20,10 @@ __all__ = [
     "Document",
     "DocumentChunk",
     "Holding",
+    "HoldingUser",
     "Message",
     "News",
+    "Portfolio",
     "PriceDaily",
     "Screener",
     "ScrapeLog",
