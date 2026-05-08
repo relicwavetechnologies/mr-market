@@ -7,7 +7,7 @@ import pytest
 
 import app.llm.context as context_mod
 from app.db.models.message import Message
-from app.llm.context import build_history_messages, estimate_tokens
+from app.llm.context import build_history_messages, estimate_tokens, _cache_key
 
 
 class FakeRedis:
@@ -135,7 +135,13 @@ async def test_build_history_compacts_older_messages_when_over_budget(
     assert "RELIANCE RSI" in rendered[0]["content"]
     assert info.history_compacted is True
     assert info.older_turns == 1
-    assert redis.expiry[f"ctx:compact:{conversation_id}:v1"] == 86_400
+    # After dropping the last user message (exclude_latest_user_turn=True),
+    # 11 messages remain. older = first 1 (11 - RECENT_HISTORY_MESSAGES=10).
+    effective = messages[:-1]
+    older = effective[:-10]
+    expected_key = _cache_key(conversation_id, older)
+    assert expected_key in redis.expiry
+    assert redis.expiry[expected_key] == 86_400
 
 
 @pytest.mark.asyncio
@@ -144,8 +150,11 @@ async def test_build_history_uses_cached_compaction_without_llm(
 ) -> None:
     conversation_id = uuid.uuid4()
     messages = [_message("user", f"q{ix}") for ix in range(12)]
+    # After exclude_latest_user_turn, 11 remain. older = first 1.
+    effective = messages[:-1]
+    older = effective[:-10]
     redis = FakeRedis()
-    await redis.set(f"ctx:compact:{conversation_id}:v1", "Cached summary")
+    await redis.set(_cache_key(conversation_id, older), "Cached summary")
     client = FakeClient()
 
     async def fake_load_messages(_conversation_id, *, session):
