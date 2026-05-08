@@ -9,17 +9,25 @@ export function ChatContainer() {
   const messages = useChatStore((s) => s.messages);
   const isGenerating = useChatStore((s) => s.isGenerating);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const prevCountRef = useRef(0);
 
   const currentMessages = activeConversationId
     ? messages[activeConversationId] ?? []
     : [];
 
   useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [currentMessages]);
+    const count = currentMessages.length;
+    const isNewMessage = count > prevCountRef.current;
+    prevCountRef.current = count;
+
+    if (isNewMessage) {
+      scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [currentMessages.length]);
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 pb-12 pt-8">
+    <div ref={containerRef} className="flex-1 overflow-y-auto px-6 pb-12 pt-8">
       <div className="mx-auto max-w-3xl space-y-8">
         {currentMessages.map((msg, idx) => (
           <div key={msg.id}>
