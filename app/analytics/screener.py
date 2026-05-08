@@ -111,10 +111,18 @@ class ScreenerError(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class FieldRef:
+    """RHS reference to another field (e.g. `close > sma_200`). Evaluator
+    dereferences against the row at evaluation time."""
+
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
 class Compare:
     field: str
     op: str  # one of: <  <=  >  >=  =  !=
-    value: Decimal | str
+    value: Decimal | str | FieldRef
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,7 +236,7 @@ def _is_keyword(tok: Token | None, kw: str) -> bool:
     return tok is not None and tok.kind == "IDENT" and tok.value.lower() == kw
 
 
-def _parse_value(tok: Token) -> Decimal | str:
+def _parse_value(tok: Token) -> Decimal | str | FieldRef:
     if tok.kind == "NUMBER":
         try:
             return Decimal(tok.value)
@@ -236,7 +244,24 @@ def _parse_value(tok: Token) -> Decimal | str:
             raise ScreenerError(f"bad number at pos {tok.pos}: {tok.value!r}") from e
     if tok.kind == "STRING":
         return tok.value
-    raise ScreenerError(f"expected NUMBER or STRING at pos {tok.pos}, got {tok.kind}")
+    if tok.kind == "IDENT":
+        # Field-to-field comparison (e.g. close > sma_200). The RHS field
+        # must also be in the allowlist — defends against the user
+        # back-dooring an arbitrary attribute through the value position.
+        name = tok.value.lower()
+        if name in _BOOL_KEYWORDS:
+            raise ScreenerError(
+                f"unexpected boolean keyword {name!r} at pos {tok.pos}"
+            )
+        if name not in ALLOWED_FIELDS:
+            raise ScreenerError(
+                f"unknown field {name!r} on rhs of comparison "
+                f"(allowed: {sorted(ALLOWED_FIELDS)})"
+            )
+        return FieldRef(name=name)
+    raise ScreenerError(
+        f"expected NUMBER, STRING, or IDENT at pos {tok.pos}, got {tok.kind}"
+    )
 
 
 def _parse_comparison(tokens: list[Token], i: int) -> tuple[Compare, int]:
@@ -347,8 +372,12 @@ def _to_decimal(v: Any) -> Decimal | None:
 
 def _compare(field_value: Any, op: str, target: Decimal | str) -> bool:
     """Evaluate one comparison. NULL semantics: any compare against None
-    returns False."""
+    returns False. `target` is already a concrete value here — FieldRef
+    nodes are dereferenced one layer up in `evaluate`."""
     if field_value is None:
+        return False
+    if target is None:
+        # Dereferenced-from-FieldRef path may produce None for missing rows.
         return False
 
     if isinstance(target, Decimal):
@@ -388,7 +417,12 @@ def evaluate(expr: Expr, row: Mapping[str, Any]) -> bool:
     node), never on bad data — bad data flows through as False via NULL
     semantics."""
     if isinstance(expr, Compare):
-        return _compare(row.get(expr.field), expr.op, expr.value)
+        # Dereference RHS field references — `close > sma_200` becomes
+        # `close > <row.sma_200>`. Missing-row → None → False (NULL semantics).
+        target = expr.value
+        if isinstance(target, FieldRef):
+            target = _to_decimal(row.get(target.name))
+        return _compare(row.get(expr.field), expr.op, target)
     if isinstance(expr, And):
         return evaluate(expr.left, row) and evaluate(expr.right, row)
     if isinstance(expr, Or):
@@ -431,11 +465,13 @@ def _row_to_str_dict(field_names: list[str], row: Mapping[str, Any]) -> dict[str
 
 
 def _collect_referenced_fields(expr: Expr, into: set[str]) -> None:
-    """Walk the AST collecting every Compare.field — used by the hits
-    serializer so the payload includes only the fields the expression
-    actually referenced."""
+    """Walk the AST collecting every field referenced — both Compare.field
+    (LHS) and any FieldRef in Compare.value (RHS). Used by the hits
+    serialiser so the payload includes every field the expression touched."""
     if isinstance(expr, Compare):
         into.add(expr.field)
+        if isinstance(expr.value, FieldRef):
+            into.add(expr.value.name)
         return
     if isinstance(expr, (And, Or)):
         _collect_referenced_fields(expr.left, into)

@@ -19,86 +19,10 @@ app = create_app()
 client = TestClient(app)
 
 
-# ---------------------------------------------------------------------------
-# /screener — run / list / get
-# ---------------------------------------------------------------------------
-
-
-class TestScreenerStubs:
-    def test_run_with_name_returns_locked_shape(self):
-        # Switched to the `name` path because `expr` is now wired to the
-        # real engine in P3-A2 and would hit Postgres. The shape contract
-        # is identical between stub and real, so this still pins it.
-        r = client.post(
-            "/screener/run",
-            json={"name": "value_rebound", "limit": 5},
-        )
-        assert r.status_code == 200, r.text
-        data = r.json()
-        # Top-level keys locked by app/contracts/phase3.md.
-        for key in ("matched", "universe_size", "exec_ms", "tickers"):
-            assert key in data, f"missing top-level key {key!r}: {data}"
-        assert isinstance(data["tickers"], list)
-        # Each ticker has the expected shape.
-        for t in data["tickers"]:
-            assert {"symbol", "score", "hits"} <= set(t)
-            assert isinstance(t["score"], (int, float))
-            assert isinstance(t["hits"], dict)
-
-    def test_run_with_name_returns_payload(self):
-        # Note: `name` path stays stubbed until P3-A3 ships the
-        # stored-screeners table. `expr` path is real (tested in
-        # tests/test_screener_db.py against a live Postgres).
-        r = client.post("/screener/run", json={"name": "value_rebound"})
-        assert r.status_code == 200, r.text
-        assert r.json()["matched"] >= 1
-
-    def test_run_with_neither_expr_nor_name_400s(self):
-        r = client.post("/screener/run", json={})
-        assert r.status_code == 400
-
-    def test_run_with_both_expr_and_name_400s(self):
-        r = client.post(
-            "/screener/run", json={"expr": "rsi_14 < 30", "name": "oversold_quality"}
-        )
-        assert r.status_code == 400
-
-    def test_run_respects_limit(self):
-        # Use the still-stubbed `name` path so this test stays
-        # DB-independent. The expr-path's limit is exercised in
-        # tests/test_screener_db.py.
-        r = client.post("/screener/run", json={"name": "oversold_quality", "limit": 1})
-        assert r.status_code == 200
-        assert len(r.json()["tickers"]) == 1
-        assert r.json()["matched"] == 1
-
-    def test_list_returns_six_seed_packs(self):
-        r = client.get("/screener/list")
-        assert r.status_code == 200
-        screeners = r.json()["screeners"]
-        assert len(screeners) == 6
-        names = {s["name"] for s in screeners}
-        assert names == {
-            "oversold_quality",
-            "value_rebound",
-            "momentum_breakout",
-            "high_pledge_avoid",
-            "fii_buying",
-            "promoter_increasing",
-        }
-        # Every seed pack has the documented shape.
-        for s in screeners:
-            assert {"name", "expr", "description", "is_seed", "created_by"} <= set(s)
-            assert s["is_seed"] is True
-
-    def test_get_known_screener(self):
-        r = client.get("/screener/value_rebound")
-        assert r.status_code == 200
-        assert r.json()["name"] == "value_rebound"
-
-    def test_get_unknown_screener_404s(self):
-        r = client.get("/screener/does_not_exist")
-        assert r.status_code == 404
+# NOTE: the screener tests that lived here were moved to
+# `tests/test_screener_stored.py` once P3-A3 wired the endpoints to the
+# real DB. Kept the portfolio / backtest / watchlist stub tests below
+# because those endpoints are still stubbed (until P3-A4 → P3-A7).
 
 
 # ---------------------------------------------------------------------------
@@ -258,9 +182,10 @@ class TestWatchlistStubs:
 
 
 class TestStubMarker:
-    def test_screener_run_has_stub_marker(self):
-        r = client.post("/screener/run", json={"name": "value_rebound"})
-        assert r.json().get("_stub") is True
+    # NOTE: the screener-stub assertion was removed when P3-A3 flipped
+    # `/screener/run` to a real DB-backed endpoint. The "no longer carries
+    # marker" check is now in tests/test_screener_stored.py against a
+    # live DB.
 
     def test_portfolio_diagnostics_has_stub_marker(self):
         r = client.get("/portfolio/17/diagnostics")
