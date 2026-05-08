@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { ResearchUploadDialog } from '@/components/research/ResearchUploadDialog';
 import { cn } from '@/lib/utils';
 
 interface SearchInputProps {
@@ -51,6 +52,7 @@ export function SearchInput({
   const [value, setValue] = useState('');
   const [mode, setMode] = useState(SEARCH_MODES[0]);
   const [model, setModel] = useState(MODELS[0]);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSubmit = () => {
@@ -115,14 +117,19 @@ export function SearchInput({
                 type="button"
                 variant="ghost"
                 size="icon-sm"
+                onClick={() => setUploadOpen(true)}
                 className="text-muted-foreground hover:bg-accent hover:text-foreground"
-                aria-label="Attach"
+                aria-label="Upload research PDF"
               >
                 <Paperclip className="size-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Attach files</TooltipContent>
+            <TooltipContent>Upload research PDF</TooltipContent>
           </Tooltip>
+          <ResearchUploadDialog
+            open={uploadOpen}
+            onOpenChange={setUploadOpen}
+          />
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
