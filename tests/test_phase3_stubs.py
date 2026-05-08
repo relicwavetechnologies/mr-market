@@ -60,28 +60,12 @@ class TestPortfolioStubs:
         # cleanly reject the request.
         assert r.status_code in (401, 422)
 
-    def test_diagnostics_shape(self):
+    def test_diagnostics_now_requires_auth(self):
+        # P3-A5: `/portfolio/{id}/diagnostics` is real and auth-gated.
+        # Without a token → 401. The shape contract is exercised by the
+        # pure-functional unit tests in tests/test_portfolio_analytics.py.
         r = client.get("/portfolio/17/diagnostics")
-        assert r.status_code == 200
-        data = r.json()
-        # Locked top-level keys.
-        for key in (
-            "portfolio_id",
-            "as_of",
-            "n_positions",
-            "total_value_inr",
-            "concentration",
-            "sector_pct",
-            "beta_blend",
-            "div_yield",
-            "drawdown_1y",
-        ):
-            assert key in data, f"missing {key!r}: {data}"
-        # Concentration sub-shape.
-        assert {"top_5_pct", "herfindahl"} <= set(data["concentration"])
-        # Sector breakdown sums close to 100.
-        total = sum(float(s["pct"]) for s in data["sector_pct"])
-        assert 99.0 <= total <= 101.0
+        assert r.status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -190,9 +174,12 @@ class TestStubMarker:
     # marker" check is now in tests/test_screener_stored.py against a
     # live DB.
 
-    def test_portfolio_diagnostics_has_stub_marker(self):
+    def test_portfolio_diagnostics_no_longer_stubbed(self):
+        # P3-A5: real endpoint, auth required → 401 without a token
+        # (stubs returned 200; this regression-guards the flip).
         r = client.get("/portfolio/17/diagnostics")
-        assert r.json().get("_stub") is True
+        assert r.status_code == 401
+        assert "_stub" not in r.json()
 
     def test_backtest_run_has_stub_marker(self):
         r = client.post(
