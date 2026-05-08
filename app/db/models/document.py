@@ -35,7 +35,7 @@ class Document(Base):
     )
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     title: Mapped[str] = mapped_column(Text, nullable=False)
-    fy: Mapped[str | None] = mapped_column(String(8))
+    fy: Mapped[str | None] = mapped_column(String(16))
     source_url: Mapped[str | None] = mapped_column(Text)
     source_path: Mapped[str | None] = mapped_column(Text)
     n_pages: Mapped[int | None] = mapped_column(Integer)
