@@ -273,9 +273,12 @@ class TestMigration:
         assert os.path.exists(path)
 
     def test_migration_revision_chain(self):
+        # P3-A3 rebased this migration's parent from f5741afc4c98 →
+        # c1f4a12c9d3b. The original parent predates the `users` table,
+        # so the migration could not actually run from there.
         from migrations.versions.a3b7c2d1e4f6_add_risk_profile_to_users import (
             down_revision,
             revision,
         )
         assert revision == "a3b7c2d1e4f6"
-        assert down_revision == "f5741afc4c98"
+        assert down_revision == "c1f4a12c9d3b"

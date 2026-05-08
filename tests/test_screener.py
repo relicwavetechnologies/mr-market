@@ -382,6 +382,54 @@ class TestCollectReferencedFields:
 # ---------------------------------------------------------------------------
 
 
+class TestFieldToField:
+    """`close > sma_200` — RHS is another allow-listed field."""
+
+    def test_parses_field_to_field(self):
+        from app.analytics.screener import FieldRef
+
+        expr = compile_expr("close > sma_200")
+        assert isinstance(expr, Compare)
+        assert expr.field == "close"
+        assert expr.op == ">"
+        assert isinstance(expr.value, FieldRef)
+        assert expr.value.name == "sma_200"
+
+    def test_evaluates_close_above_sma200(self):
+        row = {"close": Decimal("100"), "sma_200": Decimal("90")}
+        assert evaluate(compile_expr("close > sma_200"), row) is True
+        row = {"close": Decimal("80"), "sma_200": Decimal("90")}
+        assert evaluate(compile_expr("close > sma_200"), row) is False
+
+    def test_field_to_field_with_missing_rhs_is_false(self):
+        # RHS field absent → None → comparison False (NULL semantics).
+        assert evaluate(compile_expr("close > sma_200"), {"close": Decimal("100")}) is False
+
+    def test_field_to_field_with_missing_lhs_is_false(self):
+        assert evaluate(compile_expr("close > sma_200"), {"sma_200": Decimal("90")}) is False
+
+    def test_unknown_rhs_field_rejected(self):
+        with pytest.raises(ScreenerError, match="unknown field"):
+            compile_expr("close > ghost_field")
+
+    def test_field_to_field_with_and(self):
+        row = {
+            "rsi_14": Decimal("70"),
+            "close": Decimal("100"),
+            "sma_50": Decimal("90"),
+            "sma_200": Decimal("80"),
+        }
+        assert evaluate(
+            compile_expr("rsi_14 > 65 AND close > sma_50 AND close > sma_200"),
+            row,
+        ) is True
+
+    def test_collected_fields_include_rhs(self):
+        out: set[str] = set()
+        _collect_referenced_fields(compile_expr("close > sma_200"), out)
+        assert out == {"close", "sma_200"}
+
+
 class TestPublicApi:
     def test_compile_then_evaluate(self):
         row = {
