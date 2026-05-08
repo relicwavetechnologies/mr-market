@@ -12,6 +12,7 @@ export function useChat() {
   const createConversation = useChatStore((s) => s.createConversation);
   const sendMessageToStore = useChatStore((s) => s.sendMessage);
   const patchMessage = useChatStore((s) => s.patchMessage);
+  const setContextInfo = useChatStore((s) => s.setContextInfo);
   const replaceConversationId = useChatStore((s) => s.replaceConversationId);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const setIsGenerating = useChatStore((s) => s.setIsGenerating);
@@ -61,6 +62,7 @@ export function useChat() {
       const toolEvents: ToolEvent[] = [];
       let intent: string | null = null;
       let ticker: string | null = null;
+      let statusMessage = 'Starting...';
       const sources: Source[] = [];
       const seenSourceKeys = new Set<string>();
       let finalized = false;
@@ -91,6 +93,19 @@ export function useChat() {
             }
             return;
           }
+          case 'status': {
+            statusMessage = ev.message;
+            patchMessage(convId!, assistantId, {
+              toolEvents: [
+                {
+                  name: 'status',
+                  status: 'running',
+                  summary: { message: statusMessage },
+                },
+              ],
+            });
+            return;
+          }
           case 'memory_status': {
             const status =
               ev.status === 'unavailable' ? 'error' : 'done';
@@ -112,12 +127,17 @@ export function useChat() {
             patchMessage(convId!, assistantId, { toolEvents: [...toolEvents] });
             return;
           }
+          case 'context_info': {
+            if (convId) setContextInfo(convId, ev);
+            return;
+          }
           case 'intent':
             intent = ev.intent;
             ticker = ev.ticker;
             patchMessage(convId!, assistantId, { intent, ticker });
             return;
           case 'tool_call': {
+            patchMessage(convId!, assistantId, { toolEvents: [...toolEvents] });
             toolEvents.push({ name: ev.name, status: 'running', args: ev.args });
             patchMessage(convId!, assistantId, { toolEvents: [...toolEvents] });
             return;
@@ -244,6 +264,7 @@ export function useChat() {
       createConversation,
       sendMessageToStore,
       patchMessage,
+      setContextInfo,
       replaceConversationId,
       setIsGenerating,
       setActiveConversation,

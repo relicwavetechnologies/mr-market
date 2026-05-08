@@ -102,7 +102,10 @@ async def chat(
                 session=session,
                 redis=redis,
                 user_id=str(current_user.id) if current_user is not None else None,
-                risk_profile=getattr(current_user, "risk_profile", None) if current_user is not None else None,
+                risk_profile=getattr(current_user, "risk_profile", None)
+                if current_user is not None
+                else None,
+                conversation_id=conversation.id if conversation is not None else None,
             ):
                 t = ev.get("type")
                 if t == "memory":
@@ -332,7 +335,9 @@ def _title_from_message(message: str) -> str:
     title = " ".join(message.strip().split())
     if not title:
         return "New Chat"
-    return title[:60]
+    if len(title) <= 40:
+        return title
+    return title[:37] + "..."
 
 
 def _sources_from_tool_results(

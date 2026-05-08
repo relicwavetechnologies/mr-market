@@ -111,7 +111,7 @@ lark-cli wiki +node-create --space-id 7635896570625396443 --parent-node-token <P
 **Active phase:** **Phase 1 — Local Demo** (~7 days). Runs on user's Mac, free data sources only, accuracy ≥99%, no VPS, no DPDP/broker-OAuth yet.
 
 **Stack (locked for demo):**
-- **Backend:** Python 3.12 + uv + FastAPI 0.115 + uvicorn + httpx + curl_cffi + arq + Anthropic SDK · runs on `:8001`
+- **Backend:** Python 3.12 + uv + FastAPI 0.115 + uvicorn + httpx + curl_cffi + arq + Anthropic SDK · runs on `:8000`
 - **DB:** Postgres 16 (Homebrew, native — no Docker) · database `mrmarket`
 - **Cache:** Redis 7 (Homebrew)
 - **LLM:** Claude Sonnet 4.5+ (workhorse, 1h prompt cache), Claude Haiku 4.5 (intent router)
@@ -138,8 +138,8 @@ uv sync
 uv run alembic upgrade head
 uv run python -m scripts.seed_universe
 
-# 3. Backend (terminal 1) — :8001
-uv run uvicorn app.main:app --reload --port 8001
+# 3. Backend (terminal 1) — :8000
+uv run uvicorn app.main:app --reload --port 8000
 
 # 4. Frontend (terminal 2) — :5174
 cd apps/web && pnpm install && pnpm dev

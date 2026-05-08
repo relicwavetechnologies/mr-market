@@ -109,6 +109,7 @@ export function ChatPage() {
             onSubmit={sendMessage}
             placeholder="Ask a follow-up..."
             disabled={isGenerating}
+            conversationId={id}
           />
           <p className="mt-1.5 text-center text-[10px] leading-tight text-muted-foreground/80">
             Midas is AI and can make mistakes. Verify before acting — not investment advice.

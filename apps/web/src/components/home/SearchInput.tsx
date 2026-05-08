@@ -9,6 +9,7 @@ import {
   Telescope,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ContextIndicator } from '@/components/chat/ContextIndicator';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,6 +25,7 @@ interface SearchInputProps {
   disabled?: boolean;
   autoFocus?: boolean;
   variant?: 'home' | 'chat';
+  conversationId?: string | null;
 }
 
 const SEARCH_MODES = [
@@ -44,6 +46,7 @@ export function SearchInput({
   disabled = false,
   autoFocus = false,
   variant = 'home',
+  conversationId = null,
 }: SearchInputProps) {
   const [value, setValue] = useState('');
   const [mode, setMode] = useState(SEARCH_MODES[0]);
@@ -104,7 +107,7 @@ export function SearchInput({
         )}
       />
 
-      <div className="flex items-center justify-between gap-1 px-2 pb-2 pt-1">
+      <div className="flex items-center justify-between gap-2 px-2 pb-2 pt-1">
         <div className="flex items-center gap-0.5">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -136,7 +139,9 @@ export function SearchInput({
           </Tooltip>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
+          <ContextIndicator conversationId={conversationId} currentInput={value} />
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
