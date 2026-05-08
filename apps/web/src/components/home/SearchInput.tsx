@@ -1,6 +1,7 @@
 import { useRef, useState, type KeyboardEvent } from 'react';
 import {
   ArrowUp,
+  Briefcase,
   ChevronDown,
   Globe,
   Mic,
@@ -18,6 +19,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ResearchUploadDialog } from '@/components/research/ResearchUploadDialog';
+import { PortfolioImportDialog } from '@/components/portfolio/PortfolioImportDialog';
 import { cn } from '@/lib/utils';
 
 interface SearchInputProps {
@@ -53,6 +55,7 @@ export function SearchInput({
   const [mode, setMode] = useState(SEARCH_MODES[0]);
   const [model, setModel] = useState(MODELS[0]);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [portfolioOpen, setPortfolioOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSubmit = () => {
@@ -129,6 +132,30 @@ export function SearchInput({
           <ResearchUploadDialog
             open={uploadOpen}
             onOpenChange={setUploadOpen}
+          />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setPortfolioOpen(true)}
+                className="text-muted-foreground hover:bg-accent hover:text-foreground"
+                aria-label="Import portfolio"
+              >
+                <Briefcase className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Import portfolio (CSV / Zerodha paste)</TooltipContent>
+          </Tooltip>
+          <PortfolioImportDialog
+            open={portfolioOpen}
+            onOpenChange={setPortfolioOpen}
+            onAnalyze={(prompt) => {
+              setValue(prompt);
+              // Defer submit so React paints the new value first.
+              setTimeout(() => onSubmit(prompt), 0);
+            }}
           />
           <Tooltip>
             <TooltipTrigger asChild>
